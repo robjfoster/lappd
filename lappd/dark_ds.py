@@ -38,6 +38,7 @@ for pairs in gdw.chunks(dat_files, 2):
             # subtract baseline
             wave = wave - baseline
             if su.threshold(wave, -adc_thresh):
+                su.pulse_width_cf(wave, 5, condition="greater", plot=True)
                 plt.plot(range(len(wave)), wave)
                 plt.axhline(-adc_thresh, c='purple')
                 plt.show()
