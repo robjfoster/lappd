@@ -1,3 +1,4 @@
+import operator
 import pdb
 
 import matplotlib.pyplot as plt
@@ -7,6 +8,15 @@ import numpy as np
 def mv_to_adc(millivolts: float, bit_r: int = 12) -> float:
     resolution = (2**bit_r) - 1
     return resolution * millivolts/1000.0
+
+
+def get_truth(inp, relate, cut):
+    ops = {'>': operator.gt,
+           '<': operator.lt,
+           '>=': operator.ge,
+           '<=': operator.le,
+           '==': operator.eq}
+    return ops[relate](inp, cut)
 
 
 def reduced_mean(wave: np.ndarray, plot: bool = False) -> float:
@@ -25,8 +35,11 @@ def reduced_mean(wave: np.ndarray, plot: bool = False) -> float:
 
 
 def threshold(wave: np.ndarray, thresh: float, polarity: str = "negative") -> bool:
+    """Any sample in wave must pass below threshold to return True
+       Use combination of threshold and !threshold for min/max voltage cuts"""
     if polarity == "positive":
         wave = -wave
+        thresh = -thresh
     return True if np.any(wave < thresh) else False
 
 
@@ -42,7 +55,7 @@ def pulse_width_cf(wave: np.ndarray, width: float, ns_per_sample: float = 0.2,
                                          (200ps for V1742). Defaults to 0.2.
         fraction (float, optional): Fraction of total pulse height at which to 
                                     calculate pulse width. Defaults to 0.2.
-        condition (str, optional): Greater than or less than width.
+        condition (str, optional): "greater" or "less" than width.
                                    Defaults to "less".
         plot (bool, optional): Plot waveform with pulse width and CF indicated.
                                Defaults to False.
@@ -69,11 +82,38 @@ def pulse_width_cf(wave: np.ndarray, width: float, ns_per_sample: float = 0.2,
         plt.axvline(peak_sample + forward_crossing, c='purple')
         plt.axhline(thresh, c='r')
         plt.show()
-    breakpoint()
     if condition.lower() == "greater":
         crossing_width *= -1
         width *= -1
     if crossing_width < width:
+        return True
+    else:
+        return False
+
+
+def rise_time(wave: np.ndarray, time: float, condition: str = "less",
+              ns_per_sample: float = 0.2, fraction1: float = 0.2,
+              fraction2: float = 0.8, plot: bool = False) -> bool:
+    peak_sample = np.argmin(wave)
+    peak = wave[peak_sample]
+    rise_samples = wave[:peak_sample]
+    frac1_sample = peak_sample - \
+        np.argmax(rise_samples[::-1] > peak * fraction1)
+    frac2_sample = peak_sample - \
+        np.argmax(rise_samples[::-1] < peak * fraction2)
+    value = (frac2_sample - frac1_sample) * ns_per_sample
+    if plot:
+        x = range(len(wave))
+        plt.plot(x, wave)
+        plt.axvline(frac1_sample, c='purple')
+        plt.axvline(frac2_sample, c='purple')
+        plt.axhline(peak*fraction1, c='r')
+        plt.axhline(peak*fraction2, c='r')
+        plt.show()
+    if condition.lower() == "greater":
+        value *= -1
+        time *= -1
+    if value < time:
         return True
     else:
         return False
