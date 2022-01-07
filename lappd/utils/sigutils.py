@@ -132,3 +132,19 @@ def minmax(wave: np.ndarray, max_minus_min: float, condition="greater") -> bool:
         return True
     else:
         return False
+
+
+def draw_fft(wave: np.ndarray, ns_per_sample=0.2) -> None:
+    x = np.fft.fftfreq(len(wave), ns_per_sample*1e-9)
+    y = np.fft.fft(wave)
+    y = np.fft.fftshift(y / len(y))
+    plt.plot(x, np.abs(y))
+    plt.show()
+
+
+def draw_rfft(wave: np.ndarray, ns_per_sample=0.2) -> None:
+    x = np.fft.rfftfreq(len(wave), ns_per_sample*1e-9)
+    y = np.fft.rfft(wave)
+    #y = np.fft.fftshift(y / len(y))
+    plt.plot(x, np.abs(y))
+    plt.show()
