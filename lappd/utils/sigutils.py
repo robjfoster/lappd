@@ -3,6 +3,7 @@ import pdb
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import signal
 
 
 def mv_to_adc(millivolts: float, bit_r: int = 12) -> float:
@@ -114,6 +115,20 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
         value *= -1
         time *= -1
     if value < time:
+        return True
+    else:
+        return False
+
+
+def minmax(wave: np.ndarray, max_minus_min: float, condition="greater") -> bool:
+    """Calculate and cut on max and min of baseline subtracted wave"""
+    wave_max = np.max(wave)
+    wave_min = np.min(wave)
+    difference = np.abs(wave_max - wave_min)
+    if condition.lower() == "less":
+        difference *= -1
+        max_minus_min *= -1
+    if (difference) > max_minus_min:
         return True
     else:
         return False
