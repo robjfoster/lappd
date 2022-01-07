@@ -148,3 +148,10 @@ def draw_rfft(wave: np.ndarray, ns_per_sample=0.2) -> None:
     #y = np.fft.fftshift(y / len(y))
     plt.plot(x, np.abs(y))
     plt.show()
+
+
+def butterworth_lowpass(wave: np.ndarray, freq: float, ns_per_sample: float = 0.2) -> np.ndarray:
+    nyquist = 0.5 * 1 / (ns_per_sample * 1e-9)
+    b, a = signal.butter(2, freq/nyquist, btype='low', analog=False)
+    filt_wave = signal.filtfilt(b, a, wave)
+    return filt_wave
