@@ -1,9 +1,14 @@
 import operator
+import os
 import pdb
+from array import array
 
 import matplotlib.pyplot as plt
 import numpy as np
+import ROOT as root
 from scipy import signal
+from scipy.optimize import curve_fit
+from scipy.stats import moyal
 
 
 def mv_to_adc(millivolts: float, bit_r: int = 12) -> float:
@@ -157,8 +162,41 @@ def butterworth_lowpass(wave: np.ndarray, freq: float, ns_per_sample: float = 0.
     return filt_wave
 
 
+def fit_landau(wave):
+    # for some reason, only python Array objects can be cast to std::vectors
+    # with root python bindings?
+    #wavevec = root.std.vector("float")()
+    #xvec = root.std.vector("float")()
+    #wavevec = root.TVector("float")
+    #xvec = root.TVector("float")
+    root.gROOT.SetMacroPath(os.getcwd() + "/lappd/utils/")
+    root.gROOT.LoadMacro("langau.C")
+    wave = wave * -1
+    wavevec = array('d')
+    xvec = array('d')
+    for i, value in enumerate(wave):
+        # wavevec.push_back(value)
+        # xvec.push_back(i)
+        wavevec.append(value)
+        xvec.append(i)
+    #canvas = root.TCanvas("c1", "A Simple Graph Example", 200, 10, 500, 300)
+    # breakpoint()
+    #graph = root.TGraph(len(wave), xvec, wavevec)
+    #graph.Fit("landau", "B")
+    # graph.Draw("AC*")
+    plt.plot(range(len(wave)), wave)
+    plt.show()
+    root.langau.langaus(wave)
+    breakpoint()
+
+
+def fmoyal(x, a, b):
+    return -moyal.pdf(x, loc=a, scale=b)
+
+
 def scan_other(otherwave: np.ndarray,
-               peakx: int, peaky: float,
+               peakx: int,
+               peaky: float,
                scanrange: int = 10,
                ns_per_sample: float = 0.2,
                peak_height_req: float = 0.8,
@@ -167,7 +205,13 @@ def scan_other(otherwave: np.ndarray,
     """Scan another wave for a corresponding peak that reaches a fraction of
     at least peak_height_req of height of original peak. scanrange is in ns"""
     scansamples = int(scanrange / ns_per_sample)
-    scanarea = otherwave[peakx-scansamples:peakx+scansamples+1]
+    leftscan = peakx - scansamples
+    rightscan = peakx + scansamples + 1
+    if leftscan < 0:
+        leftscan = 0
+    if rightscan > len(otherwave):
+        rightscan = len(otherwave)
+    scanarea = otherwave[leftscan:rightscan]
     if np.min(scanarea) < peak_height_req * peaky:
         return True
     else:
