@@ -120,7 +120,7 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
         return False
 
 
-def minmax(wave: np.ndarray, max_minus_min: float, condition="greater") -> bool:
+def minmax(wave: np.ndarray, max_minus_min: float, condition: str = "greater") -> bool:
     """Calculate and cut on max and min of baseline subtracted wave"""
     wave_max = np.max(wave)
     wave_min = np.min(wave)
@@ -134,7 +134,7 @@ def minmax(wave: np.ndarray, max_minus_min: float, condition="greater") -> bool:
         return False
 
 
-def draw_fft(wave: np.ndarray, ns_per_sample=0.2) -> None:
+def draw_fft(wave: np.ndarray, ns_per_sample: float = 0.2) -> None:
     x = np.fft.fftfreq(len(wave), ns_per_sample*1e-9)
     y = np.fft.fft(wave)
     y = np.fft.fftshift(y / len(y))
@@ -142,7 +142,7 @@ def draw_fft(wave: np.ndarray, ns_per_sample=0.2) -> None:
     plt.show()
 
 
-def draw_rfft(wave: np.ndarray, ns_per_sample=0.2) -> None:
+def draw_rfft(wave: np.ndarray, ns_per_sample: float = 0.2) -> None:
     x = np.fft.rfftfreq(len(wave), ns_per_sample*1e-9)
     y = np.fft.rfft(wave)
     #y = np.fft.fftshift(y / len(y))
@@ -155,3 +155,20 @@ def butterworth_lowpass(wave: np.ndarray, freq: float, ns_per_sample: float = 0.
     b, a = signal.butter(2, freq/nyquist, btype='low', analog=False)
     filt_wave = signal.filtfilt(b, a, wave)
     return filt_wave
+
+
+def scan_other(otherwave: np.ndarray,
+               peakx: int, peaky: float,
+               scanrange: int = 10,
+               ns_per_sample: float = 0.2,
+               peak_height_req: float = 0.8,
+               plot: bool = False
+               ) -> bool:
+    """Scan another wave for a corresponding peak that reaches a fraction of
+    at least peak_height_req of height of original peak. scanrange is in ns"""
+    scansamples = int(scanrange / ns_per_sample)
+    scanarea = otherwave[peakx-scansamples:peakx+scansamples+1]
+    if np.min(scanarea) < peak_height_req * peaky:
+        return True
+    else:
+        return False
