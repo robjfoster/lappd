@@ -73,10 +73,11 @@ namespace CAENReader
         return wave;
     }
 
-    inline void convertADCWave(std::vector<float> ADCWave, int bitR)
+    inline std::vector<float> convertADCWave(std::vector<float> ADCWave, int bitR)
     {
         std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
                        { return adc_to_mv(value, 12); });
+        return ADCWave;
     }
 
     inline float calculateBaseline(ROOT::RVec<float> wave)
