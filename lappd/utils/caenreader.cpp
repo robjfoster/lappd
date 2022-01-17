@@ -104,8 +104,8 @@ namespace CAENReader
     {
         auto baseline = calculateBaseline(wave);
         auto subWave = subtractBaseline(wave, baseline);
-        convertADCWave(subWave, 12);
-        return subWave;
+        auto voltWave = convertADCWave(subWave, 12);
+        return voltWave;
     }
 
     inline bool passThreshold(std::vector<float> wave, float threshold)
