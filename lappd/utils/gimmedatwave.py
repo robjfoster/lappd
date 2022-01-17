@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import numpy as np
 
@@ -53,6 +54,25 @@ def read_dat(fname, hsize=6, rsize=1024, hdtype=np.int32, wdtype=np.float32):
         while f.tell() < os.stat(f.name).st_size:
             header, wave = read_func(f, hsize, rsize, hdtype, wdtype)
             yield header, wave
+
+
+def find_pair_channel(file: str, allfiles: List[str]) -> str:
+    # Find file corresponding to opposite channel for DS readout
+    # Assumes each pair of digitiser channels corresponds to one strip
+    try:
+        number = int(file.split("_")[-1].split(".")[0])
+    except TypeError:
+        print("gimmedatwave.find_pair_channel() Error")
+        return None
+    except IndexError:
+        print("gimmedatwave.find_pair_channel() Error")
+        return None
+    if number % 2 == 0:
+        pairnumber = number + 1
+    else:
+        pairnumber = number - 1
+    pairfile = f"wave_{pairnumber}"
+    return pairfile
 
 
 def find_wave(f, bytes_to_seek, hsize=6, rsize=1024, hdtype=np.int32, wdtype=np.float32):

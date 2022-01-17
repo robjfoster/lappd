@@ -16,6 +16,11 @@ def mv_to_adc(millivolts: float, bit_r: int = 12) -> float:
     return resolution * millivolts/1000.0
 
 
+def adc_to_mv(adc: float, bit_r: int = 12) -> float:
+    resolution = (2**bit_r) - 1
+    return adc / resolution * 1000
+
+
 def get_truth(inp, relate, cut):
     ops = {'>': operator.gt,
            '<': operator.lt,
@@ -80,21 +85,80 @@ def pulse_width_cf(wave: np.ndarray, width: float, ns_per_sample: float = 0.2,
     forward_samples = wave[peak_sample: peak_sample+width_samples]
     back_crossing = np.argmax(back_samples[::-1] > thresh)
     forward_crossing = np.argmax(forward_samples > thresh)
+    breakpoint()
     crossing_width = (back_crossing + forward_crossing) * ns_per_sample
     if plot:
         x = range(len(wave))
         plt.plot(x, wave)
-        plt.axvline(peak_sample - back_crossing, c='purple')
-        plt.axvline(peak_sample + forward_crossing, c='purple')
-        plt.axhline(thresh, c='r')
+        plt.axvline(peak_sample - back_crossing, c='purple', alpha=0.2)
+        plt.axvline(peak_sample + forward_crossing, c='purple', alpha=0.2)
+        plt.axhline(thresh, c='r', alpha=0.2)
         plt.show()
     if condition.lower() == "greater":
         crossing_width *= -1
         width *= -1
+    print("measured width:", crossing_width)
+    print("Comparing to: ", width)
     if crossing_width < width:
         return True
     else:
         return False
+
+
+def pulse_width_new(wave: np.ndarray, width: float, ns_per_sample: float = 0.2,
+                    fraction: float = 0.2, condition: str = "less", plot: bool = False
+                    ) -> bool:
+    """Constant fraction pulse width cut
+
+    Args:
+        wave (np.ndarray): Waveform or reduced waveform
+        width (float): Pulse width threshold value in ns
+        ns_per_sample (float, optional): Digitiser sampling rate 
+                                         (200ps for V1742). Defaults to 0.2.
+        fraction (float, optional): Fraction of total pulse height at which to 
+                                    calculate pulse width. Defaults to 0.2.
+        condition (str, optional): "greater" or "less" than width.
+                                   Defaults to "less".
+        plot (bool, optional): Plot waveform with pulse width and CF indicated.
+                               Defaults to False.
+
+    Returns:
+        bool: True if passed cut, False otherwise
+    """
+    # pass in a cut wave and pulse width threshold
+    if condition not in ["greater", "less"]:
+        raise ValueError
+    peak_sample = np.argmin(wave)
+    thresh = wave[peak_sample] * fraction
+    # samples either side of peak
+    width_samples = int(round(width / ns_per_sample))
+    if (peak_sample + width_samples > len(wave)) or (peak_sample - width_samples < 0):
+        return False
+    back_samples = wave[peak_sample-width_samples: peak_sample]
+    forward_samples = wave[peak_sample: peak_sample+width_samples]
+    back_crossing = np.argmax(back_samples[::-1] > thresh)
+    forward_crossing = np.argmax(forward_samples > thresh)
+    crossing_width = (back_crossing + forward_crossing) * ns_per_sample
+    print("measured width:", crossing_width)
+    print("Comparing to: ", width)
+    if plot:
+        x = range(len(wave))
+        plt.plot(x, wave)
+        plt.axvline(peak_sample - back_crossing, c='purple', alpha=0.2)
+        plt.axvline(peak_sample + forward_crossing, c='orange', alpha=0.2)
+        plt.axhline(thresh, c='r', alpha=0.2)
+        plt.show()
+    # if wave has not reached threshold within pulse width, value will be zero
+    if (back_crossing == 0) or (forward_crossing == 0):
+        if condition == "greater":
+            return True
+        else:
+            return False
+    else:
+        if condition == "less":
+            return True
+        else:
+            return False
 
 
 def rise_time(wave: np.ndarray, time: float, condition: str = "less",
@@ -111,10 +175,10 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
     if plot:
         x = range(len(wave))
         plt.plot(x, wave)
-        plt.axvline(frac1_sample, c='purple')
-        plt.axvline(frac2_sample, c='purple')
-        plt.axhline(peak*fraction1, c='r')
-        plt.axhline(peak*fraction2, c='r')
+        plt.axvline(frac1_sample, c='purple', alpha=0.2)
+        plt.axvline(frac2_sample, c='purple', alpha=0.2)
+        plt.axhline(peak*fraction1, c='r', alpha=0.2)
+        plt.axhline(peak*fraction2, c='r', alpha=0.2)
         plt.show()
     if condition.lower() == "greater":
         value *= -1
@@ -179,14 +243,14 @@ def fit_landau(wave):
         # xvec.push_back(i)
         wavevec.append(value)
         xvec.append(i)
-    #canvas = root.TCanvas("c1", "A Simple Graph Example", 200, 10, 500, 300)
+    canvas = root.TCanvas("c1", "A Simple Graph Example", 200, 10, 500, 300)
     # breakpoint()
-    #graph = root.TGraph(len(wave), xvec, wavevec)
-    #graph.Fit("landau", "B")
-    # graph.Draw("AC*")
-    plt.plot(range(len(wave)), wave)
-    plt.show()
-    root.langau.langaus(wave)
+    graph = root.TGraph(len(wave), xvec, wavevec)
+    graph.Fit("landau", "B")
+    graph.Draw("AC*")
+    #plt.plot(range(len(wave)), wave)
+    # plt.show()
+    # root.langau.langaus(wave)
     breakpoint()
 
 
