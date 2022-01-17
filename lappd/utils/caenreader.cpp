@@ -73,7 +73,7 @@ namespace CAENReader
         return wave;
     }
 
-    inline std::vector<float> convertADCWave(std::vector<float> ADCWave, int bitR)
+    inline void convertADCWave(std::vector<float> ADCWave, int bitR)
     {
         std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
                        { return adc_to_mv(value, 12); });
@@ -103,8 +103,8 @@ namespace CAENReader
     {
         auto baseline = calculateBaseline(wave);
         auto subWave = subtractBaseline(wave, baseline);
-        auto voltWave = convertADCWave(subWave, 12);
-        return voltWave;
+        convertADCWave(subWave, 12);
+        return subWave;
     }
 
     inline bool passThreshold(std::vector<float> wave, float threshold)
