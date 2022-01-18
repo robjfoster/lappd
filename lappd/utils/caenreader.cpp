@@ -66,24 +66,12 @@ namespace CAENReader
         return wave;
     }
 
-    inline std::vector<float> subtractBaseline(std::vector<float> wave, float baseline)
-    {
-        std::transform(wave.begin(), wave.end(), wave.begin(), [baseline](float &value) -> float
-                       { return value - baseline; });
-        return wave;
-    }
-
-    inline std::vector<float> convertADCWave(std::vector<float> ADCWave, int bitR)
-    {
-        std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
-                       { return adc_to_mv(value, 12); });
-        return ADCWave;
-    }
-
     inline float calculateBaseline(ROOT::RVec<float> wave)
     {
         float dev = ROOT::VecOps::StdDev(wave); //TMath::StdDev(wave.begin(), wave.end());
         float mean = ROOT::VecOps::Mean(wave);  //TMath::Mean(wave.begin(), wave.end());
+        std::cout << "dev: " << dev << std::endl;
+        std::cout << "mean: " << mean << std::endl;
         // int count = 0;
         // float total = 0;
         // for (auto value : wave)
@@ -100,17 +88,48 @@ namespace CAENReader
         return slicedMean;
     }
 
+    inline std::vector<float> subtractBaseline(std::vector<float> wave)
+    {
+        // Subtract baseline using default calculateBaseline (reduced mean) method
+        auto baseline = calculateBaseline(wave);
+        std::transform(wave.begin(), wave.end(), wave.begin(), [baseline](float &value) -> float
+                       { return value - baseline; });
+        return wave;
+    }
+
+    inline std::vector<float> subtractBaseline(std::vector<float> wave, float baseline)
+    {
+        // Subtract a given baseline from a wave
+        std::transform(wave.begin(), wave.end(), wave.begin(), [baseline](float &value) -> float
+                       { return value - baseline; });
+        return wave;
+    }
+
+    inline std::vector<float> convertADCWave(std::vector<float> ADCWave, int bitR)
+    {
+        std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
+                       { return adc_to_mv(value, 12); });
+        return ADCWave;
+    }
+
+    inline std::vector<float> removeLastNSamples(std::vector<float> wave, int nSamples)
+    {
+        wave.erase(wave.end() - nSamples, wave.end());
+        return wave;
+    }
+
     std::vector<float> processWave(std::vector<float> wave)
     {
-        auto baseline = calculateBaseline(wave);
-        auto subWave = subtractBaseline(wave, baseline);
+        auto cleanWave = removeLastNSamples(wave, 15);
+        auto baseline = calculateBaseline(cleanWave);
+        auto subWave = subtractBaseline(cleanWave, baseline);
         auto voltWave = convertADCWave(subWave, 12);
         return voltWave;
     }
 
-    inline bool passThreshold(std::vector<float> wave, float threshold)
+    inline bool passMinThreshold(std::vector<float> wave, float threshold)
     {
-        for (auto &value : wave)
+        for (auto value : wave)
         {
             if (value < threshold)
             {
@@ -120,7 +139,19 @@ namespace CAENReader
         return false;
     }
 
-    std::vector<std::vector<float>> coarseDarkSearch(std::string filepath, float threshold)
+    inline bool passMaxThreshold(std::vector<float> wave, float threshold)
+    {
+        for (auto value : wave)
+        {
+            if (value > threshold)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    std::vector<std::vector<float>> coarseDarkSearch(std::string filepath, float minThreshold, float maxThreshold)
     {
         std::ifstream infile(filepath, std::ios::binary);
         infile.seekg(0, std::ios::end);
@@ -130,17 +161,28 @@ namespace CAENReader
         std::vector<std::vector<float>> darkWaves;
         int count = 0;
         int passed = 0;
+        int failedMin = 0;
+        int failedMax = 0;
         while ((infile.tellg() < size))
         {
             auto rawWave = readOne(infile);
             auto wave = processWave(rawWave);
             count++;
-            if (passThreshold(wave, threshold))
+            if (!passMinThreshold(wave, minThreshold))
             {
-                passed++;
-                darkWaves.push_back(wave);
+                failedMin++;
+                continue;
             }
+            if (!passMaxThreshold(wave, maxThreshold))
+            {
+                failedMax++;
+                continue;
+            }
+            passed++;
+            darkWaves.push_back(wave);
         }
+        std::cout << failedMin << " failed low threshold" << std::endl;
+        std::cout << failedMax << " failed high threshold" << std::endl;
         return darkWaves;
     }
 
