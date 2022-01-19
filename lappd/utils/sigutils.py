@@ -167,6 +167,8 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
     peak_sample = np.argmin(wave)
     peak = wave[peak_sample]
     rise_samples = wave[:peak_sample]
+    if len(rise_samples) == 0:
+        return False
     frac1_sample = peak_sample - \
         np.argmax(rise_samples[::-1] > peak * fraction1)
     frac2_sample = peak_sample - \

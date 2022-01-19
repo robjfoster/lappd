@@ -28,14 +28,14 @@ namespace CAENReader
 
     inline float mv_to_adc(float millivolts, int bitR)
     {
-        int resolution = pow(bitR, 2) - 1;
+        float resolution = pow(2, bitR) - 1;
         return resolution * millivolts / 1000.0;
     }
 
     inline float adc_to_mv(float adc, int bitR)
     {
-        int resolution = pow(bitR, 2) - 1;
-        return adc / resolution * 1000;
+        float resolution = pow(2, bitR) - 1;
+        return adc / resolution * 1000.0;
     }
 
     std::vector<float> readOne(std::ifstream &infile)
@@ -70,8 +70,6 @@ namespace CAENReader
     {
         float dev = ROOT::VecOps::StdDev(wave); //TMath::StdDev(wave.begin(), wave.end());
         float mean = ROOT::VecOps::Mean(wave);  //TMath::Mean(wave.begin(), wave.end());
-        std::cout << "dev: " << dev << std::endl;
-        std::cout << "mean: " << mean << std::endl;
         // int count = 0;
         // float total = 0;
         // for (auto value : wave)
@@ -120,7 +118,7 @@ namespace CAENReader
 
     std::vector<float> processWave(std::vector<float> wave)
     {
-        auto cleanWave = removeLastNSamples(wave, 15);
+        auto cleanWave = removeLastNSamples(wave, 10);
         auto baseline = calculateBaseline(cleanWave);
         auto subWave = subtractBaseline(cleanWave, baseline);
         auto voltWave = convertADCWave(subWave, 12);
