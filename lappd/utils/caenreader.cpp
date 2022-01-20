@@ -183,14 +183,14 @@ namespace CAENReader
             auto rawWave = readOne(infile);
             auto wave = processWave(rawWave);
             count++;
-            if (!passMinThreshold(wave, minThreshold))
-            {
-                failedMin++;
-                continue;
-            }
             if (!passMaxThreshold(wave, maxThreshold))
             {
                 failedMax++;
+                continue;
+            }
+            if (!passMinThreshold(wave, minThreshold))
+            {
+                failedMin++;
                 continue;
             }
             passed++;
