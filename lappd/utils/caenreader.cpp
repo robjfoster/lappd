@@ -99,6 +99,14 @@ namespace CAENReader
             eventNo};
     }
 
+    CAENWave readCAENWave(std::string filename, int eventNo)
+    {
+        int bytestart = eventNo * sizeof(float) * 1030;
+        std::ifstream infile(filename, std::ios::binary);
+        infile.seekg(bytestart);
+        return readCAENWave(infile);
+    }
+
     inline float calculateBaseline(ROOT::RVec<float> wave)
     {
         float dev = ROOT::VecOps::StdDev(wave); //TMath::StdDev(wave.begin(), wave.end());
