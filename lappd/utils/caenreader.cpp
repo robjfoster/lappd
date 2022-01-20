@@ -21,9 +21,9 @@ namespace CAENReader
 
     struct CAENWave
     {
-        std::vector<float> header;
+        std::vector<unsigned int> header;
         std::vector<float> wave;
-        float baseline;
+        int eventNo;
     };
 
     int getNumberEntries(std::string filename)
@@ -73,6 +73,30 @@ namespace CAENReader
         infile.seekg(byteStart);
         auto wave = readOne(infile);
         return wave;
+    }
+
+    CAENWave readCAENWave(std::ifstream &infile)
+    {
+        auto count = infile.tellg();
+        unsigned int hBuffer = 0;
+        std::vector<unsigned int> header;
+        for (int i = 0; i < 6; i++)
+        {
+            infile.read((char *)&hBuffer, sizeof(unsigned int));
+            header.push_back(hBuffer);
+        }
+        float wBuffer = 0;
+        std::vector<float> wave;
+        for (int i = 0; i < 1024; i++)
+        {
+            infile.read((char *)&wBuffer, sizeof(float));
+            wave.push_back(wBuffer);
+        }
+        int eventNo = count / (sizeof(float) * 1030);
+        return CAENWave{
+            header,
+            wave,
+            eventNo};
     }
 
     inline float calculateBaseline(ROOT::RVec<float> wave)
@@ -180,7 +204,9 @@ namespace CAENReader
         int failedMax = 0;
         while ((infile.tellg() < size))
         {
-            auto rawWave = readOne(infile);
+            //auto rawWave = readOne(infile);
+            auto rawCAENWave = readCAENWave(infile);
+            auto rawWave = rawCAENWave.wave;
             auto wave = processWave(rawWave);
             count++;
             if (!passMaxThreshold(wave, maxThreshold))
