@@ -149,8 +149,16 @@ namespace CAENReader
         return true;
     }
 
-    std::vector<std::vector<float>> coarseDarkSearch(std::string filepath, float minThreshold, float maxThreshold)
+    struct darkOutput
     {
+        std::vector<std::vector<float>> waves;
+        int rejectedMin;
+        int rejectedMax;
+    };
+
+    darkOutput coarseDarkSearch(std::string filepath, float minThreshold, float maxThreshold)
+    {
+        struct darkOutput output;
         std::ifstream infile(filepath, std::ios::binary);
         infile.seekg(0, std::ios::end);
         auto size = infile.tellg();
@@ -181,7 +189,10 @@ namespace CAENReader
         }
         std::cout << failedMin << " failed low threshold" << std::endl;
         std::cout << failedMax << " failed high threshold" << std::endl;
-        return darkWaves;
+        output.waves = darkWaves;
+        output.rejectedMin = failedMin;
+        output.rejectedMax = failedMax;
+        return output;
     }
 
 }
