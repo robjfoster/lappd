@@ -26,6 +26,15 @@ namespace CAENReader
         float baseline;
     };
 
+    int getNumberEntries(std::string filename)
+    {
+        std::ifstream infile(filename, std::ios::binary);
+        infile.seekg(0, std::ios::end);
+        auto size = infile.tellg();
+        int nWaves = size / (sizeof(float) * 1030);
+        return nWaves;
+    }
+
     inline float mv_to_adc(float millivolts, int bitR)
     {
         float resolution = pow(2, bitR) - 1;
@@ -162,7 +171,7 @@ namespace CAENReader
         std::ifstream infile(filepath, std::ios::binary);
         infile.seekg(0, std::ios::end);
         auto size = infile.tellg();
-        std::cout << "Number of waves: " << size / (sizeof(float) * 1030) << std::endl; // (1024+6 )* 32 byte * 8 bits/byte
+        // std::cout << "Number of waves: " << size / (sizeof(float) * 1030) << std::endl; // (1024+6 )* 32 byte * 8 bits/byte
         infile.seekg(0, std::ios::beg);
         std::vector<std::vector<float>> darkWaves;
         int count = 0;
