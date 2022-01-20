@@ -68,10 +68,32 @@ def check_hv(channel: int, tolerance:float = 1) -> bool:
     else: 
         return False
 
+def ramp_time(channel:int, tolerance:float = 1) -> float:
+    """Estimate time needed to ramp to target voltage"""
+    hvinfo = monitor()
+    vmon = hvinfo[channel]['vmon']
+    vset = hvinfo[channel]['vset']
+
+    if vset < vmon-tolerance:
+        rampupdown = 'rup'
+    elif vset > vmon+tolerance:
+        rampupdown = 'rdown'
+    elif abs(vset-vmon) <= tolerance:
+        ramptime = 0
+        return ramptime
+    
+    ramprate = hvinfo[channel][rampupdown]
+    vdiff = abs(vtarget-vinit)
+
+    ramptime = vdiff/ramprate
+    return ramptime
+
+
 def ramp_and_check(channel:int, tolerance:float = 1, sleeptime=None, loopcount=15):
     loop_count = 0
-    # TODO: Dynamic sleep time based on ramprate/rampdistance
-    stime = 10 if not sleeptime else sleeptime
+    ramptime = ramp_time(channel, tolerance) + 1
+    stime = ramptime if not sleeptime else sleeptime
+    
     while True:
         if check_hv(channel):
             print("Voltage reached")
