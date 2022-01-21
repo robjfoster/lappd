@@ -119,21 +119,10 @@ namespace CAENReader
 
     inline float calculateBaseline(ROOT::RVec<float> wave)
     {
-        float dev = ROOT::VecOps::StdDev(wave); //TMath::StdDev(wave.begin(), wave.end());
-        float mean = ROOT::VecOps::Mean(wave);  //TMath::Mean(wave.begin(), wave.end());
-        // int count = 0;
-        // float total = 0;
-        // for (auto value : wave)
-        // {
-        //     if (TMath::Abs(value) < mean + dev)
-        //     {
-        //         total += value;
-        //         count++;
-        //     }
-        // }
+        float dev = ROOT::VecOps::StdDev(wave);
+        float mean = ROOT::VecOps::Mean(wave);
         auto slicedWave = wave[abs(wave) < (mean + dev)];
-        float slicedMean = ROOT::VecOps::Mean(slicedWave); //TMath::Mean(slicedWave.begin(), slicedWave.end());
-        // float redMean = total / float(count);
+        float slicedMean = ROOT::VecOps::Mean(slicedWave);
         return slicedMean;
     }
 
@@ -169,6 +158,21 @@ namespace CAENReader
         auto baseline = calculateBaseline(wave);
         subtractBaseline(wave, baseline);
         convertADCWave(wave, 12);
+    }
+
+    CAENProcessedWave processWave(CAENWave &caenWave)
+    {
+        ROOT::RVec<float> rWave = caenWave.wave;
+        int wavePeak = ROOT::VecOps::ArgMin(rWave);
+        float waveMax = ROOT::VecOps::Max(rWave);
+        float waveMin = caenWave.wave[wavePeak];
+        return CAENProcessedWave{
+            caenWave.header,
+            caenWave.wave,
+            caenWave.eventNo,
+            waveMax,
+            waveMin,
+            wavePeak};
     }
 
     inline bool passMinThreshold(std::vector<float> wave, float threshold)
