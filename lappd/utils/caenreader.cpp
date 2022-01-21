@@ -26,6 +26,16 @@ namespace CAENReader
         int eventNo;
     };
 
+    struct CAENProcessedWave
+    {
+        std::vector<unsigned int> header;
+        std::vector<float> wave;
+        int eventNo;
+        float max;
+        float min;
+        int peakSample;
+    };
+
     int getNumberEntries(std::string filename)
     {
         std::ifstream infile(filename, std::ios::binary);
@@ -136,34 +146,30 @@ namespace CAENReader
         return wave;
     }
 
-    inline std::vector<float> subtractBaseline(std::vector<float> wave, float baseline)
+    inline void subtractBaseline(std::vector<float> &wave, float baseline)
     {
         // Subtract a given baseline from a wave
         std::transform(wave.begin(), wave.end(), wave.begin(), [baseline](float &value) -> float
                        { return value - baseline; });
-        return wave;
     }
 
-    inline std::vector<float> convertADCWave(std::vector<float> ADCWave, int bitR)
+    inline void convertADCWave(std::vector<float> &ADCWave, int bitR)
     {
         std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
                        { return adc_to_mv(value, 12); });
-        return ADCWave;
     }
 
-    inline std::vector<float> removeLastNSamples(std::vector<float> wave, int nSamples)
+    inline void removeLastNSamples(std::vector<float> &wave, int nSamples)
     {
         wave.erase(wave.end() - nSamples, wave.end());
-        return wave;
     }
 
-    std::vector<float> processWave(std::vector<float> wave)
+    void preprocessWave(std::vector<float> &wave)
     {
-        auto cleanWave = removeLastNSamples(wave, 10);
-        auto baseline = calculateBaseline(cleanWave);
-        auto subWave = subtractBaseline(cleanWave, baseline);
-        auto voltWave = convertADCWave(subWave, 12);
-        return voltWave;
+        removeLastNSamples(wave, 10);
+        auto baseline = calculateBaseline(wave);
+        subtractBaseline(wave, baseline);
+        convertADCWave(wave, 12);
     }
 
     inline bool passMinThreshold(std::vector<float> wave, float threshold)
@@ -192,7 +198,7 @@ namespace CAENReader
 
     struct darkOutput
     {
-        std::vector<std::vector<float>> waves;
+        std::vector<CAENWave> waves;
         int rejectedMin;
         int rejectedMax;
     };
@@ -200,22 +206,22 @@ namespace CAENReader
     darkOutput coarseDarkSearch(std::string filepath, float minThreshold, float maxThreshold)
     {
         struct darkOutput output;
+        std::vector<CAENWave> darkWaves;
+        int count = 0;
+        int passed = 0;
+        int failedMin = 0;
+        int failedMax = 0;
         std::ifstream infile(filepath, std::ios::binary);
         infile.seekg(0, std::ios::end);
         auto size = infile.tellg();
         // std::cout << "Number of waves: " << size / (sizeof(float) * 1030) << std::endl; // (1024+6 )* 32 byte * 8 bits/byte
         infile.seekg(0, std::ios::beg);
-        std::vector<std::vector<float>> darkWaves;
-        int count = 0;
-        int passed = 0;
-        int failedMin = 0;
-        int failedMax = 0;
         while ((infile.tellg() < size))
         {
             //auto rawWave = readOne(infile);
-            auto rawCAENWave = readCAENWave(infile);
-            auto rawWave = rawCAENWave.wave;
-            auto wave = processWave(rawWave);
+            auto caenWave = readCAENWave(infile);
+            auto wave = caenWave.wave;
+            preprocessWave(wave);
             count++;
             if (!passMaxThreshold(wave, maxThreshold))
             {
@@ -228,7 +234,7 @@ namespace CAENReader
                 continue;
             }
             passed++;
-            darkWaves.push_back(wave);
+            darkWaves.push_back(caenWave);
         }
         std::cout << failedMin << " failed low threshold" << std::endl;
         std::cout << failedMax << " failed high threshold" << std::endl;
