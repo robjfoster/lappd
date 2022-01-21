@@ -137,13 +137,12 @@ namespace CAENReader
         return slicedMean;
     }
 
-    inline std::vector<float> subtractBaseline(std::vector<float> wave)
+    inline void subtractBaseline(std::vector<float> &wave)
     {
         // Subtract baseline using default calculateBaseline (reduced mean) method
         auto baseline = calculateBaseline(wave);
         std::transform(wave.begin(), wave.end(), wave.begin(), [baseline](float &value) -> float
                        { return value - baseline; });
-        return wave;
     }
 
     inline void subtractBaseline(std::vector<float> &wave, float baseline)
@@ -220,15 +219,14 @@ namespace CAENReader
         {
             //auto rawWave = readOne(infile);
             auto caenWave = readCAENWave(infile);
-            auto wave = caenWave.wave;
-            preprocessWave(wave);
+            preprocessWave(caenWave.wave);
             count++;
-            if (!passMaxThreshold(wave, maxThreshold))
+            if (!passMaxThreshold(caenWave.wave, maxThreshold))
             {
                 failedMax++;
                 continue;
             }
-            if (!passMinThreshold(wave, minThreshold))
+            if (!passMinThreshold(caenWave.wave, minThreshold))
             {
                 failedMin++;
                 continue;
