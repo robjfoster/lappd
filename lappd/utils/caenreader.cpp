@@ -18,6 +18,7 @@
 
 namespace CAENReader
 {
+    static const float NS_PER_SAMPLE = 0.2;
 
     struct CAENWave
     {
@@ -32,7 +33,7 @@ namespace CAENReader
         std::vector<float> wave;
         int eventNo;
         float max;
-        float min;
+        float peakHeight;
         int peakSample;
     };
 
@@ -197,6 +198,45 @@ namespace CAENReader
             }
         }
         return true;
+    }
+
+    std::vector<float> sliceAroundPeak(CAENProcessedWave wave, float lookback, float lookforward)
+    {
+        int backSamples = std::floor(lookback * NS_PER_SAMPLE);
+        int forwardSamples = std::floor(lookforward * NS_PER_SAMPLE);
+        std::vector<float> slicedWave = {wave.wave.begin() + wave.peakSample - backSamples, wave.wave.begin() + wave.peakSample + forwardSamples};
+        return slicedWave;
+    }
+
+    std::vector<float> sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
+    {
+        int backSamples = std::floor(lookback * NS_PER_SAMPLE);
+        int forwardSamples = std::floor(lookforward * NS_PER_SAMPLE);
+        std::vector<float> slicedWave = {wave.wave.begin() + peakSample - backSamples, wave.wave.begin() + peakSample + forwardSamples};
+        return slicedWave;
+    }
+
+    bool correlateAcrossStrip(CAENProcessedWave firstWave, std::string secondFilename, float peakHeightReq = 0.8)
+    {
+        CAENWave secondWave = readCAENWave(secondFilename, firstWave.eventNo);
+        std::vector<float> slicedSecond = sliceAroundPeak(secondWave, firstWave.peakSample, 2, 2);
+        return passMinThreshold(slicedSecond, firstWave.peakHeight * peakHeightReq);
+    }
+
+    float integrate(std::vector<float> wave)
+    {
+        float total = 0;
+        for (auto value : wave)
+        {
+            total += value;
+        }
+        return total;
+    }
+
+    float integratedCharge(std::vector<float> wave, float terminationOhms = 50.0)
+    {
+        float charge = integrate(wave) * NS_PER_SAMPLE / terminationOhms;
+        return charge;
     }
 
     struct darkOutput
