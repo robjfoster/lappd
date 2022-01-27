@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdlib>
+#include <list>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -20,6 +21,17 @@ namespace CAENReader
 {
     static const float NS_PER_SAMPLE = 0.2;
 
+    // Container for header as output by CAEN Wavedump
+    struct CAENHeader
+    {
+        unsigned int eventSize;  // Should be 4120 for x1742 models (6*4byte header + 1024*4byte record)
+        unsigned int boardID;    // Not used
+        unsigned int pattern;    // Not used
+        unsigned int channel;    // This is the channel within the group i.e. ch8 is 0 but in group2
+        unsigned int eventCount; // Not exact event count as it rolls over whenever the limit is reached
+        unsigned int eventTime;  // Time when event is created in digitiser memory, not trigger time
+    };
+
     struct CAENWave
     {
         std::vector<unsigned int> header;
@@ -29,13 +41,55 @@ namespace CAENReader
 
     struct CAENProcessedWave
     {
-        std::vector<unsigned int> header;
+        CAENHeader header;
         std::vector<float> wave;
         int eventNo;
         float max;
         float peakHeight;
         int peakSample;
     };
+
+    struct WavePair
+    {
+        CAENProcessedWave leftWave;
+        CAENProcessedWave rightWave;
+    };
+
+    inline CAENHeader processHeader(std::vector<unsigned int> headerVect)
+    {
+        return CAENHeader{
+            headerVect[0],
+            headerVect[1],
+            headerVect[2],
+            headerVect[3],
+            headerVect[4],
+            headerVect[5],
+        };
+    }
+
+    float median(std::vector<float> wave)
+    {
+        assert(!wave.empty());
+        if (wave.size() % 2 == 0)
+        {
+            const auto median_it1 = wave.begin() + wave.size() / 2 - 1;
+            const auto median_it2 = wave.begin() + wave.size() / 2;
+
+            std::nth_element(wave.begin(), median_it1, wave.end());
+            const auto e1 = *median_it1;
+
+            std::nth_element(wave.begin(), median_it2, wave.end());
+            const auto e2 = *median_it2;
+
+            return (e1 + e2) / 2;
+        }
+        else
+        {
+            const auto median_it = wave.begin() + wave.size() / 2;
+            std::nth_element(wave.begin(), median_it, wave.end());
+            return *median_it;
+        }
+    }
 
     int getNumberEntries(std::string filename)
     {
@@ -155,20 +209,23 @@ namespace CAENReader
 
     void preprocessWave(std::vector<float> &wave)
     {
+        // Strip last samples, baseline subtract and convert to mV
         removeLastNSamples(wave, 10);
         auto baseline = calculateBaseline(wave);
         subtractBaseline(wave, baseline);
         convertADCWave(wave, 12);
     }
 
+    // Maybe overload this method such that it runs preprocessWave?
     CAENProcessedWave processWave(CAENWave &caenWave)
     {
         ROOT::RVec<float> rWave = caenWave.wave;
         int wavePeak = ROOT::VecOps::ArgMin(rWave);
         float waveMax = ROOT::VecOps::Max(rWave);
         float waveMin = caenWave.wave[wavePeak];
+        CAENHeader processedHeader = processHeader(caenWave.header);
         return CAENProcessedWave{
-            caenWave.header,
+            processedHeader,
             caenWave.wave,
             caenWave.eventNo,
             waveMax,
@@ -202,8 +259,15 @@ namespace CAENReader
 
     std::vector<float> sliceAroundPeak(CAENProcessedWave wave, float lookback, float lookforward)
     {
-        int backSamples = std::floor(lookback * NS_PER_SAMPLE);
-        int forwardSamples = std::floor(lookforward * NS_PER_SAMPLE);
+        int backSamples = std::floor(lookback / NS_PER_SAMPLE);
+        int forwardSamples = std::floor(lookforward / NS_PER_SAMPLE);
+        int windowStart = wave.peakSample - backSamples;
+        int windowEnd = wave.peakSample + forwardSamples;
+        if (windowStart < 0 || windowEnd > (int)wave.wave.size())
+        {
+            std::cout << "Invalid slice, returning original waveform" << std::endl;
+            return wave.wave;
+        }
         std::vector<float> slicedWave = {wave.wave.begin() + wave.peakSample - backSamples, wave.wave.begin() + wave.peakSample + forwardSamples};
         return slicedWave;
     }
@@ -223,6 +287,17 @@ namespace CAENReader
         return passMinThreshold(slicedSecond, firstWave.peakHeight * peakHeightReq);
     }
 
+    std::vector<CAENProcessedWave> readAllChannels(std::list<std::string> filenames, int eventNo)
+    {
+        std::vector<CAENProcessedWave> waves;
+        for (auto file : filenames)
+        {
+            CAENWave wave = readCAENWave(file, eventNo);
+            waves.push_back(processWave(wave));
+        }
+        return waves;
+    }
+
     float integrate(std::vector<float> wave)
     {
         float total = 0;
@@ -230,7 +305,7 @@ namespace CAENReader
         {
             total += value;
         }
-        return total;
+        return abs(total);
     }
 
     float integratedCharge(std::vector<float> wave, float terminationOhms = 50.0)
