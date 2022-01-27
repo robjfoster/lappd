@@ -1,8 +1,10 @@
-from ast import Or
 import pdb
 import os
 import sys
 import subprocess
+
+from auto_utils import hvparse, monitor, cmd_wavedump, cmd_sethv, check_hv, ramp_and_check
+
 
 time = sys.argv[1]
 try:
@@ -11,7 +13,7 @@ except IndexError:
     config_path = "/run/media/watchman/4d90ac40-7247-42ac-9d73-a76f7f121c5d/LAPPD/LAPPDConfig_X742.txt"
 
 PC_CHANNEL = 4
-MONITOR_CMD = '/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'
+#MONITOR_CMD = '/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'
 startdir = os.getcwd()
 
 class cd:
@@ -25,85 +27,6 @@ class cd:
 
     def __exit__(self, etype, value, traceback):
         os.chdir(self.savedPath)
-
-def hvparse(output: str):
-    output = output.decode("utf-8").split("\n")
-    error_msg = output[0]
-    header = output[1].split(",")
-    hvinfo = {}
-    for row in output[2:-1]:
-        row = row.split(",")
-        channel = int(row[1])
-        values = {}
-        values["model"] = row[0]
-        values["iset"] = float(row[2].split("uA")[0])
-        values['vset'] = float(row[3].split("V")[0])
-        values['vmon'] = float(row[4].split("V")[0])
-        values['vmax'] = float(row[5].split("V")[0])
-        values["imon"] = float(row[6].split("uA")[0])
-        values["rup"] = float(row[7].split("Vps")[0])
-        values["rdown"] = float(row[8].split("Vps")[0])
-        values["power"] = row[9]
-        values["err"] = row[10]
-        hvinfo[channel] = values
-    return hvinfo
-
-def monitor(cmd=MONITOR_CMD):
-    # TODO: Rampup/Rampdown is considered an error message
-    try:
-        output = subprocess.check_output(cmd, shell=True)
-        hvinfo = hvparse(output)
-    except subprocess.CalledProcessError as e:
-        print(f"Error message: {e.output}")
-        sys.exit("Monitoring error")
-    return hvinfo
-
-def cmd_wavedump(time, config_path):
-    wavedump_cmd = ""
-    wavedump_cmd += '(sleep 3s && echo "s" && sleep 3s && echo "W" && '
-    wavedump_cmd += f'sleep {time}s && echo "W" && sleep 3s && echo "s" && sleep 3s && echo "q")'
-    wavedump_cmd += f' | wavedump {config_path}'
-    subprocess.call(wavedump_cmd, shell=True)
-
-def cmd_sethv(pc_channel, pc_voltage):
-    reset_cmd = f'/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --VSet {pc_channel} {pc_voltage}'
-    subprocess.call(reset_cmd, shell=True)
-
-def check_hv(tolerance:float = 1) -> bool:
-    """Check vset and vmon are with tolerance"""
-    # try:
-    #     monitoroutput = subprocess.check_output(MONITOR_CMD, shell=True).decode("utf-8")
-    # except subprocess.CalledProcessError as e:
-    #     print(e.output)
-    #     sys.exit("dead")
-    hvinfo = monitor()
-    vset = hvinfo[PC_CHANNEL]['vset']
-    vmon = hvinfo[PC_CHANNEL]['vmon']
-    # parsed_output = monitoroutput.split("\n")
-    # header = parsed_output[:2]
-    # hv_data = parsed_output[2:]
-    # hv_channel = hv_data[PC_CHANNEL]
-    # hv_channel_data = hv_channel.split(",")
-    # if int(hv_channel_data[1]) != PC_CHANNEL: sys.exit("WRONG CHANNEL")
-    # vmon = float(hv_channel_data[4].split("V")[0])
-    if abs(vmon-vset) <= tolerance: 
-        return True
-    else: 
-        return False
-
-def ramp_and_check(tolerance:float = 1, sleeptime=None, loopcount=15):
-    loop_count = 0
-    # TODO: Dynamic sleep time based on ramprate/rampdistance
-    stime = 10 if not sleeptime else sleeptime
-    while True:
-        if check_hv():
-            print("Voltage reached")
-            break
-        else:
-            print("Ramping voltage...")
-            loop_count += 1
-            if loop_count > 15: sys.exit("Monitoring took a long time, something's wrong")
-            subprocess.call(f"sleep {stime}s", shell=True)
 
 
 init_hvinfo = monitor()
@@ -126,14 +49,14 @@ for setv in voltages:
         print(f"###\n###\n###\n Setting pc_voltage to {pc_voltage}")
         cmd_sethv(PC_CHANNEL, pc_voltage)
         print("Voltage set")
-        ramp_and_check()
+        ramp_and_check(PC_CHANNEL)
         print("Waiting for voltage to stabilise...")
         subprocess.call("sleep 5s", shell=True)
         cmd_wavedump(time, config_path)
         subprocess.call("cd ..", shell=True)
 # Now reset voltages back to beginning
 cmd_sethv(PC_CHANNEL, ORIGINAL_PC_VOLTAGE)
-ramp_and_check()
+ramp_and_check(PC_CHANNEL)
 print("PC voltage reset")
 print("Done.")
 
