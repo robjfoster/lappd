@@ -282,3 +282,51 @@ def scan_other(otherwave: np.ndarray,
         return True
     else:
         return False
+
+def peak_find(wave, peakparams, ns_per_sample=0.2):
+    # Call scipy.find_peaks
+    peaks, peakinfo = signal.find_peaks(
+        wave*-1.0, 
+        height=((peakparams.getfloat('minheight')), peakparams.getfloat('maxheight')), 
+        distance=peakparams.getfloat('mindistance') / ns_per_sample, 
+        width=(peakparams.getfloat('minwidth') / ns_per_sample, peakparams.getfloat('maxwidth') / ns_per_sample), 
+        rel_height=peakparams.getfloat('relheight'))
+    return peaks, peakinfo
+
+
+def correlate_peaks(peaks1, peakinfo1, peaks2, peakinfo2, max_offset, minrelpulseheight=0.5, maxrelpulseheight=1.5, ns_per_sample=0.2):
+    # An attempt at correlating peaks on two waveform produced from either side of a stripline
+    # Looks for pulses within max_offset (ns) and chooses the one with the largest pulse height
+    # Probably some edge cases that have been missed, but scipy.find_peaks ensures that there
+    # should not be multiple identified peaks within a given distance anyway
+    peak_pairs = []
+    offsets = []
+    # Loop through the shorter of the two lists
+    first_itr = peaks1 if len(peaks1) <= len(peaks2) else peaks2
+    first_info = peakinfo1 if first_itr is peaks1 else peakinfo2
+    sec_itr = peaks1 if first_itr is not peaks1 else peaks2
+    sec_info = peakinfo1 if first_info is not peakinfo1 else peakinfo2
+    for i, ipeak in enumerate(first_itr):
+        potential_partners = []
+        partner_offsets = []
+        partner_heights = []
+        for j, jpeak in enumerate(sec_itr):
+            offset = (ipeak - jpeak) * ns_per_sample
+            # check that pulses are within max_offset of each other in time
+            if abs(offset) < max_offset:
+                # check that the pulse height is within rel_threshold
+                relative_height = first_info['peak_heights'][i] / sec_info['peak_heights'][j]
+                if minrelpulseheight < relative_height < maxrelpulseheight:
+                    potential_partners.append(jpeak)
+                    partner_offsets.append(offset)
+                    partner_heights.append(relative_height)
+                    #peak_pairs.append((ipeak, jpeak))
+                    #offsets.append(offset)
+        try:
+            partner_peak = np.argmax(partner_heights)
+            peak_pairs.append((ipeak, potential_partners[partner_peak]))
+            offsets.append(partner_offsets[partner_peak])
+        except ValueError:
+            # No matching peaks
+            return peak_pairs, offsets
+    return peak_pairs, offsets
