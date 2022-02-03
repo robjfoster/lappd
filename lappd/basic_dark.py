@@ -1,56 +1,57 @@
 import os
 import pdb
 import sys
+import time
 from contextlib import ExitStack
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import ROOT as root
 
-from utils import gimmedatwave as gdw
-from utils import sigutils as su
+import utils.gimmedatwave as gdw
+import utils.sigutils as su
 
-base_directory = sys.argv[1]
+try:
+    base_directory = sys.argv[1]
+except IndexError:
+    sys.exit("Specify the directory")
 
-dat_files = gdw.find_dats(base_directory)
+root.gSystem.Load(os.path.dirname(os.path.realpath(__file__)) 
+                  + "/utils/caenreader_cpp.so")
+caenreader = root.CAENReader
 
+LOWTHRESHOLD = -5.0 # mV
+HIGHTHRESHOLD = 3.0 # mV
+RISETHRESHOLD = 2.0 # ns
 
-mv_threshold = 2.5
-threshold = su.mv_to_adc(mv_threshold)
-print(f"Threshold at -{mv_threshold} mV, = {threshold} ADC counts")
-count = 0
-plot = True
+sample_times = gdw.ns(0.2, 1014)
 
-with ExitStack() as stack:
-    files = [stack.enter_context(open(fname, "rb")) for fname in dat_files]
-    for i, f in enumerate(files):
-        f.seek(0)
-        while f.tell() < os.stat(f.name).st_size:
-            header, wave = gdw.read_one(f)
-            wave = wave[:-9]
-            samples = range(len(wave))
-            reduced_wave = wave[np.abs(wave) < wave + np.std(wave)]
-            mean = np.mean(reduced_wave)
-            wave = wave - mean
-            # and np.std(wave) < 2.8:#np.count_nonzero(wave > 0) < 450:
-            if np.any(wave < -threshold):
-                count += 1
-                header2, wave2 = gdw.find_wave(files[i+1], f.tell()-header[0])
-                wave2 = wave2[:-9]
-                reduced_wave2 = wave2[np.abs(wave2) < wave2 + np.std(wave2)]
-                mean2 = np.mean(reduced_wave2)
-                wave2 = wave2 - mean2
-                if plot:
-                    fig, ax = plt.subplots(2, 1)
-                    ax[0].plot(samples, wave)
-                    ax[1].plot(samples, wave2)
-                    ax[0].axhline(0, c='r', alpha=0.5)
-                    ax[1].axhline(0, c='r', alpha=0.5)
-                    ax[0].axhline(-threshold, c='purple', alpha=0.5)
-                    ax[1].axhline(-threshold, c='purple', alpha=0.5)
-                    fig.suptitle(f"File: {f.name.split('/')[-1]}")
-                    ax[0].set_title(
-                        f"Event byte start {f.tell() - header[0]}. File {f.name.split('/')[-1]}")
-                    ax[1].set_title(
-                        f"Event byte start {files[i+1].tell() - header[0]}. File {files[i+1].name.split('/')[-1]}")
-                    plt.show()
-    print(f"Total pulses: {count}")
+files = gdw.find_dats(base_directory)
+for file in files:
+    print(f"Reading {file}")
+    n_waves = caenreader.getNumberEntries(file)
+    print(f"Number of waves: {n_waves}")
+    total_time = sample_times[-1] * n_waves * 1e-9
+    rt_waves = []
+    start = time.time()
+    coarse_output = caenreader.coarseDarkSearch(file, LOWTHRESHOLD, HIGHTHRESHOLD)
+    end = time.time()
+    print(f"Processing time: {end - start}")
+    for wave in coarse_output.waves:
+        try:
+            if su.rise_time(np.asarray(wave.wave), RISETHRESHOLD, fraction1=0.5, fraction2=1.0):
+                rt_waves.append(wave)
+        except IndexError:
+            pdb.set_trace()
+            pass
+    dark_rate = len(rt_waves) / total_time
+    dark_rate_noise_rej = len(rt_waves) / (sample_times[-1] * (n_waves - coarse_output.rejectedMax) * 1e-9)
+    print(f"Number of waves passed threshold: {len(rt_waves)}")
+    print(f"Dark rate = {dark_rate} Hz = {dark_rate / 13.5} Hz/cm2")
+    print(f"Dark rate (noise rejected) = {dark_rate_noise_rej} Hz = {dark_rate_noise_rej / 13.5} Hz/cm2")
+    #for caenwave in rt_waves:
+    #    np.save("data/examplewaves/" + str(caenwave.eventNo) + ".npy", caenwave.wave)
+    #pdb.set_trace()
+    #with open("results_250.txt", "a") as f:
+    #    f.write(str(dark_rate_noise_rej / 13.5))
+    #    f.write("\n")

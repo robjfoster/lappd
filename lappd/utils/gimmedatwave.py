@@ -97,6 +97,9 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i: i + n]
 
+def ns(sample_length=0.2, n_samples=1024):
+    return [sample_length * i for i in range(n_samples)]
+
 
 class CAENReader():
 
