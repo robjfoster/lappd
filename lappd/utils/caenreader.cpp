@@ -68,7 +68,9 @@ namespace CAENReader
         for (auto &&index : indices)
         {
             float value = wave[index];
-            //  The candidate peak should not be below the overall threshold
+            // The candidate peak should be above the overall threshold
+            // Since the samples are ordered, we can break here because no
+            // subsequent samples will be above threshold
             if (value > threshold)
             {
                 break;
@@ -77,14 +79,14 @@ namespace CAENReader
             // TODO: Add bounds check here?
             if (wave[index - 1] < value || wave[index + 1] < value)
             {
-                break;
+                continue;
             }
             // The candidate peak should not be within "distance" samples
             // of any other identified peak
             bool peakIsGood = true;
             for (auto &&peakIndex : peaks)
             {
-                if (abs(index - peakIndex) <= distance)
+                if (abs(index - peakIndex) < distance)
                 {
                     peakIsGood = false;
                     break;
@@ -375,9 +377,9 @@ namespace CAENReader
         std::ifstream infile(filepath, std::ios::binary);
         infile.seekg(0, std::ios::end);
         auto size = infile.tellg();
-        // std::cout << "Number of waves: " << size / (sizeof(float) * 1030) << std::endl; // (1024+6 )* 32 byte * 8 bits/byte
+        std::cout << "Number of waves: " << size / (sizeof(float) * 1030) << std::endl; // (1024+6 )* 32 byte * 8 bits/byte
         infile.seekg(0, std::ios::beg);
-        while ((infile.tellg() < size))
+        while ((infile.tellg() <= size) && (!infile.eof()))
         {
             // auto rawWave = readOne(infile);
             auto caenWave = readCAENWave(infile);
@@ -396,8 +398,9 @@ namespace CAENReader
             passed++;
             darkWaves.push_back(caenWave);
         }
-        std::cout << failedMin << " failed low threshold" << std::endl;
+        infile.close();
         std::cout << failedMax << " failed high threshold" << std::endl;
+        std::cout << failedMin << " failed low threshold" << std::endl;
         output.waves = darkWaves;
         output.rejectedMin = failedMin;
         output.rejectedMax = failedMax;
