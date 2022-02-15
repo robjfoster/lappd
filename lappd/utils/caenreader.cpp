@@ -313,15 +313,25 @@ namespace CAENReader
             std::cout << "Invalid slice, returning original waveform" << std::endl;
             return wave.wave;
         }
-        std::vector<float> slicedWave = {wave.wave.begin() + wave.peakSample - backSamples, wave.wave.begin() + wave.peakSample + forwardSamples};
+        std::vector<float> slicedWave = {wave.wave.begin() + windowStart, wave.wave.begin() + windowEnd};
         return slicedWave;
     }
 
     std::vector<float> sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
     {
-        int backSamples = std::floor(lookback * NS_PER_SAMPLE);
-        int forwardSamples = std::floor(lookforward * NS_PER_SAMPLE);
-        std::vector<float> slicedWave = {wave.wave.begin() + peakSample - backSamples, wave.wave.begin() + peakSample + forwardSamples};
+        int backSamples = std::floor(lookback / NS_PER_SAMPLE);
+        int forwardSamples = std::floor(lookforward / NS_PER_SAMPLE);
+        int windowStart = peakSample - backSamples;
+        int windowEnd = peakSample + forwardSamples;
+        if (windowStart < 0)
+        {
+            windowStart = 0;
+        }
+        if (windowEnd > (int)wave.wave.size())
+        {
+            windowEnd = wave.wave.size() - 1;
+        }
+        std::vector<float> slicedWave = {wave.wave.begin() + windowStart, wave.wave.begin() + windowEnd};
         return slicedWave;
     }
 
