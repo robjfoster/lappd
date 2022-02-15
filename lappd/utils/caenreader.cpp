@@ -55,6 +55,49 @@ namespace CAENReader
         CAENProcessedWave rightWave;
     };
 
+    std::vector<int> findPeaks(std::vector<float> wave, float threshold, int distance)
+    {
+        // TODO: Maybe put in cut that peak cannot be in first x samples?
+        std::vector<int> peaks;
+        std::vector<int> indices(wave.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        // Sort sample indices according to value of that sample (descending order)
+        sort(indices.begin(), indices.end(), [&](float i, float j) -> bool
+             { return wave[i] < wave[j]; });
+        // Loop through indices and check the sample offset
+        for (auto &&index : indices)
+        {
+            float value = wave[index];
+            //  The candidate peak should not be below the overall threshold
+            if (value > threshold)
+            {
+                break;
+            }
+            // The candidate peak should be at a local minima
+            // TODO: Add bounds check here?
+            if (wave[index - 1] < value || wave[index + 1] < value)
+            {
+                break;
+            }
+            // The candidate peak should not be within "distance" samples
+            // of any other identified peak
+            bool peakIsGood = true;
+            for (auto &&peakIndex : peaks)
+            {
+                if (abs(index - peakIndex) <= distance)
+                {
+                    peakIsGood = false;
+                    break;
+                }
+            }
+            if (peakIsGood)
+            {
+                peaks.push_back(index);
+            }
+        }
+        return peaks;
+    }
+
     inline CAENHeader processHeader(std::vector<unsigned int> headerVect)
     {
         return CAENHeader{
@@ -336,7 +379,7 @@ namespace CAENReader
         infile.seekg(0, std::ios::beg);
         while ((infile.tellg() < size))
         {
-            //auto rawWave = readOne(infile);
+            // auto rawWave = readOne(infile);
             auto caenWave = readCAENWave(infile);
             preprocessWave(caenWave.wave);
             count++;
