@@ -84,9 +84,11 @@ def find_wave(f, bytes_to_seek, hsize=6, rsize=1024, hdtype=np.int32, wdtype=np.
     header, wave = read_one(f, hsize, rsize, hdtype, wdtype)
     return header, wave
 
+
 def get_filename(daqchannel, base=""):
     filename = base + f"wave_{daqchannel}.dat"
     return filename
+
 
 def find_dats(dir):
     datfiles = []
@@ -101,6 +103,7 @@ def chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i: i + n]
 
+
 def ns(sample_length=0.2, n_samples=1024, offset=0):
     if not offset:
         return [sample_length * i for i in range(n_samples)]
@@ -112,6 +115,7 @@ class CAENReader():
 
     def __init__(self, filename, header_bytes, header_dtype, record_bytes, record_dtype) -> None:
         pass
+
 
 if __name__ == "__main__":
     print("Entering GDW debug session")

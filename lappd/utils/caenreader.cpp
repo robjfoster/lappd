@@ -34,15 +34,27 @@ namespace CAENReader
 
     struct CAENWave
     {
-        std::vector<unsigned int> header;
+        CAENHeader header;
         std::vector<float> wave;
+        std::vector<float> times;
         int eventNo;
+    };
+
+    // Container for waveform sliced around a pulse
+    struct Pulse
+    {
+        CAENHeader header;
+        std::vector<float> wave;
+        std::vector<float> times;
+        int eventNo;
+        int peakSample;
     };
 
     struct CAENProcessedWave
     {
         CAENHeader header;
         std::vector<float> wave;
+        std::vector<float> times;
         int eventNo;
         float max;
         float peakHeight;
@@ -54,51 +66,6 @@ namespace CAENReader
         CAENProcessedWave leftWave;
         CAENProcessedWave rightWave;
     };
-
-    std::vector<int> findPeaks(std::vector<float> wave, float threshold, int distance)
-    {
-        // TODO: Maybe put in cut that peak cannot be in first x samples?
-        std::vector<int> peaks;
-        std::vector<int> indices(wave.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        // Sort sample indices according to value of that sample (descending order)
-        sort(indices.begin(), indices.end(), [&](float i, float j) -> bool
-             { return wave[i] < wave[j]; });
-        // Loop through indices and check the sample offset
-        for (auto &&index : indices)
-        {
-            float value = wave[index];
-            // The candidate peak should be above the overall threshold
-            // Since the samples are ordered, we can break here because no
-            // subsequent samples will be above threshold
-            if (value > threshold)
-            {
-                break;
-            }
-            // The candidate peak should be at a local minima
-            // TODO: Add bounds check here?
-            if (wave[index - 1] < value || wave[index + 1] < value)
-            {
-                continue;
-            }
-            // The candidate peak should not be within "distance" samples
-            // of any other identified peak
-            bool peakIsGood = true;
-            for (auto &&peakIndex : peaks)
-            {
-                if (abs(index - peakIndex) < distance)
-                {
-                    peakIsGood = false;
-                    break;
-                }
-            }
-            if (peakIsGood)
-            {
-                peaks.push_back(index);
-            }
-        }
-        return peaks;
-    }
 
     inline CAENHeader processHeader(std::vector<unsigned int> headerVect)
     {
@@ -157,6 +124,16 @@ namespace CAENReader
         return adc / resolution * 1000.0;
     }
 
+    std::vector<float> generateTimes(int samples, float nsPerSample)
+    {
+        std::vector<float> vec;
+        for (int i = 0; i < samples; i++)
+        {
+            vec.push_back(float(i) * nsPerSample);
+        }
+        return vec;
+    }
+
     std::vector<float> readOne(std::ifstream &infile)
     {
         unsigned int hBuffer = 0;
@@ -203,9 +180,11 @@ namespace CAENReader
             wave.push_back(wBuffer);
         }
         int eventNo = count / (sizeof(float) * 1030);
+        std::vector<float> times = generateTimes(1024, NS_PER_SAMPLE);
         return CAENWave{
-            header,
+            processHeader(header),
             wave,
+            times,
             eventNo};
     }
 
@@ -261,6 +240,15 @@ namespace CAENReader
         convertADCWave(wave, 12);
     }
 
+    void preprocessWave(CAENWave &wave)
+    {
+        removeLastNSamples(wave.wave, 10);
+        removeLastNSamples(wave.times, 10);
+        auto baseline = calculateBaseline(wave.wave);
+        subtractBaseline(wave.wave, baseline);
+        convertADCWave(wave.wave, 12);
+    }
+
     // Maybe overload this method such that it runs preprocessWave?
     CAENProcessedWave processWave(CAENWave &caenWave)
     {
@@ -268,10 +256,10 @@ namespace CAENReader
         int wavePeak = ROOT::VecOps::ArgMin(rWave);
         float waveMax = ROOT::VecOps::Max(rWave);
         float waveMin = caenWave.wave[wavePeak];
-        CAENHeader processedHeader = processHeader(caenWave.header);
         return CAENProcessedWave{
-            processedHeader,
+            caenWave.header,
             caenWave.wave,
+            caenWave.times,
             caenWave.eventNo,
             waveMax,
             waveMin,
@@ -302,6 +290,177 @@ namespace CAENReader
         return true;
     }
 
+    float pulseWidth(std::vector<float> wave, int peakSample, float fraction)
+    {
+        float value = wave[peakSample];
+        float threshold = value * fraction;
+        int backSample = -1;
+        int forwardSample = -1;
+        float width;
+        // Backwards scan
+        for (int index = peakSample; index >= 0; index--)
+        {
+            if (wave[index] > threshold)
+            {
+                int overThresh = 0;
+                for (int i = 1; i < 6; i++)
+                {
+                    float ivalue = wave[index - i];
+                    if (ivalue > threshold)
+                    {
+                        overThresh++;
+                    }
+                }
+                if (overThresh > 2)
+                {
+                    backSample = index;
+                    break;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+        }
+        for (int index = peakSample; index < int(wave.size()); index++)
+        {
+            if (wave[index] > threshold)
+            {
+                int overThresh = 0;
+                for (int i = 1; i < 6; i++)
+                {
+                    float ivalue = wave[index + i];
+                    if (ivalue > threshold)
+                    {
+                        overThresh++;
+                    }
+                }
+                if (overThresh > 2)
+                {
+                    forwardSample = index;
+                    break;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+        }
+        if (backSample < 0 || forwardSample < 0)
+        {
+            width = -1;
+        }
+        else
+        {
+            width = (forwardSample - backSample) * NS_PER_SAMPLE;
+        }
+        return width;
+    }
+
+    std::vector<int> findPeaks(std::vector<float> wave, float threshold, int distance, float width)
+    {
+        std::vector<int> peaks;
+        std::vector<int> indices(wave.size());
+        std::iota(indices.begin(), indices.end(), 0);
+        // Sort sample indices according to value of that sample (descending order)
+        sort(indices.begin(), indices.end(), [&](float i, float j) -> bool
+             { return wave[i] < wave[j]; });
+        // Loop through indices and check the sample offset
+        for (auto &&index : indices)
+        {
+            float value = wave[index];
+            // The candidate peak should be above the overall threshold
+            // Since the samples are ordered, we can break here because no
+            // subsequent samples will be above threshold
+            if (value > threshold)
+            {
+                break;
+            }
+            // Don't consider anything in the first or last 10 samples as a peak
+            if (index < 10 || index > (int(wave.size()) + 10))
+            {
+                continue;
+            }
+            // The candidate peak should be at a local minima
+            // Don't need bounds check because of previous if statement
+            if (wave[index - 1] < value || wave[index + 1] < value)
+            {
+                continue;
+            }
+            // The candidate peak should not be within "distance" samples
+            // of any other identified peak
+            bool peakIsGood = true;
+            for (auto &&peakIndex : peaks)
+            {
+                if (abs(index - peakIndex) < distance)
+                {
+                    peakIsGood = false;
+                    break;
+                }
+            }
+            if (peakIsGood)
+            {
+                // Peak location is good, now check rough pulse width
+                if (1.0 < pulseWidth(wave, index, 0.2) < width)
+                {
+                    peaks.push_back(index);
+                }
+            }
+        }
+        return peaks;
+    }
+
+    // NOT WORKING RIGHT NOW
+    // std::vector<int> findPeaks(CAENWave wave, float threshold, float distance)
+    // {
+    //     std::vector<int> peaks;
+    //     // std::vector<float> times = wave.times;
+    //     std::iota(wave.times.begin(), wave.times.end(), 0);
+    //     // Sort sample indices according to value of that sample (descending order)
+    //     sort(wave.times.begin(), wave.times.end(), [&](float i, float j) -> bool
+    //          { return wave.wave[i] < wave.wave[j]; });
+    //     // Loop through times and check the sample offset
+    //     for (int index = 0; index < int(wave.times.size()); index++)
+    //     {
+    //         float time = wave.times[index];
+    //         float value = wave.wave[index];
+    //         std::cout << "Index: " << index << std::endl;
+    //         std::cout << "Time: " << time << std::endl;
+    //         std::cout << "Value: " << value << std::endl;
+    //         if (value > threshold)
+    //         {
+    //             break;
+    //         }
+    //         // Don't consider anything in the first 2 ns as a peak
+    //         if (time < 2.0)
+    //         {
+    //             continue;
+    //         }
+    //         // The candidate peak should be at a local minima
+    //         // TODO: Add bounds check here?
+    //         if (wave.wave[index - 1] < value || wave.wave[index + 1] < value)
+    //         {
+    //             continue;
+    //         }
+    //         // The candidate peak should not be within "distance" ns
+    //         // of any other identified peak
+    //         bool peakIsGood = true;
+    //         for (auto &&peakIndex : peaks)
+    //         {
+    //             if ((abs(index - peakIndex) * NS_PER_SAMPLE) < distance)
+    //             {
+    //                 peakIsGood = false;
+    //                 break;
+    //             }
+    //         }
+    //         if (peakIsGood)
+    //         {
+    //             peaks.push_back(index);
+    //         }
+    //     }
+    //     return peaks;
+    // }
+
     std::vector<float> sliceAroundPeak(CAENProcessedWave wave, float lookback, float lookforward)
     {
         int backSamples = std::floor(lookback / NS_PER_SAMPLE);
@@ -317,7 +476,25 @@ namespace CAENReader
         return slicedWave;
     }
 
-    std::vector<float> sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
+    std::vector<float> sliceAroundPeak(std::vector<float> wave, int peakSample, float lookback, float lookforward)
+    {
+        int backSamples = std::floor(lookback / NS_PER_SAMPLE);
+        int forwardSamples = std::floor(lookforward / NS_PER_SAMPLE);
+        int windowStart = peakSample - backSamples;
+        int windowEnd = peakSample + forwardSamples;
+        if (windowStart < 0)
+        {
+            windowStart = 0;
+        }
+        if (windowEnd > (int)wave.size())
+        {
+            windowEnd = wave.size() - 1;
+        }
+        std::vector<float> slicedWave = {wave.begin() + windowStart, wave.begin() + windowEnd};
+        return slicedWave;
+    }
+
+    CAENWave sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
     {
         int backSamples = std::floor(lookback / NS_PER_SAMPLE);
         int forwardSamples = std::floor(lookforward / NS_PER_SAMPLE);
@@ -332,13 +509,18 @@ namespace CAENReader
             windowEnd = wave.wave.size() - 1;
         }
         std::vector<float> slicedWave = {wave.wave.begin() + windowStart, wave.wave.begin() + windowEnd};
-        return slicedWave;
+        std::vector<float> slicedTimes = {wave.times.begin() + windowStart, wave.times.begin() + windowEnd};
+        return CAENWave{
+            wave.header,
+            slicedWave,
+            slicedTimes,
+            wave.eventNo};
     }
 
     bool correlateAcrossStrip(CAENProcessedWave firstWave, std::string secondFilename, float peakHeightReq = 0.8)
     {
         CAENWave secondWave = readCAENWave(secondFilename, firstWave.eventNo);
-        std::vector<float> slicedSecond = sliceAroundPeak(secondWave, firstWave.peakSample, 2, 2);
+        std::vector<float> slicedSecond = sliceAroundPeak(secondWave.wave, firstWave.peakSample, 2, 2);
         return passMinThreshold(slicedSecond, firstWave.peakHeight * peakHeightReq);
     }
 
@@ -416,5 +598,4 @@ namespace CAENReader
         output.rejectedMax = failedMax;
         return output;
     }
-
 }

@@ -33,8 +33,9 @@ def get_truth(inp, relate, cut):
            '==': operator.eq}
     return ops[relate](inp, cut)
 
+
 def ns_to_sample(ns, ns_per_sample):
-    return int(ns/ns_per_sample)    
+    return int(ns/ns_per_sample)
 
 
 def reduced_mean(wave: np.ndarray, plot: bool = False) -> float:
@@ -51,6 +52,7 @@ def reduced_mean(wave: np.ndarray, plot: bool = False) -> float:
         plt.show()
     return value
 
+
 def slice_around_peak(wave, lookback, lookforward, ns_per_sample=0.2):
     peak = np.argmin(wave)
     lookback_samples = peak-int(lookback / ns_per_sample)
@@ -60,6 +62,7 @@ def slice_around_peak(wave, lookback, lookforward, ns_per_sample=0.2):
     if lookforward_samples > len(wave):
         lookforward_samples = -1
     return wave[lookback_samples:lookforward_samples]
+
 
 def slice_around_sample(wave, peak_sample, lookback, lookforward, ns_per_sample=0.2):
     lookback_samples = peak_sample-int(lookback / ns_per_sample)
@@ -216,6 +219,7 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
     else:
         return False
 
+
 def cfd(wave, fraction, peak_sample=None, plot=False, samplesabovethresh=5):
     peak_sample = np.argmin(wave) if not peak_sample else peak_sample
     print(peak_sample)
@@ -227,7 +231,8 @@ def cfd(wave, fraction, peak_sample=None, plot=False, samplesabovethresh=5):
     for i, sample in enumerate(beforepeak[::-1]):
         if sample > threshold:
             if np.all(beforepeak[i:i+samplesabovethresh] > threshold):
-                thresh_sample = ((peak_sample - i) + (peak_sample - (i+1)) ) / 2.0
+                thresh_sample = ((peak_sample - i) +
+                                 (peak_sample - (i+1))) / 2.0
                 break
     if plot and thresh_sample:
         plt.plot(wave, "x")
@@ -236,6 +241,7 @@ def cfd(wave, fraction, peak_sample=None, plot=False, samplesabovethresh=5):
         plt.axhline(threshold, c="r")
         plt.show()
     return thresh_sample
+
 
 def minmax(wave: np.ndarray, max_minus_min: float, condition: str = "greater") -> bool:
     """Calculate and cut on max and min of baseline subtracted wave"""
@@ -329,19 +335,23 @@ def scan_other(otherwave: np.ndarray,
     else:
         return False
 
+
 def peak_find(wave, peakparams, ns_per_sample=0.2):
     # Call scipy.find_peaks
     peaks, peakinfo = signal.find_peaks(
-        wave*-1.0, 
-        height=((peakparams.getfloat('minheight')), peakparams.getfloat('maxheight')), 
-        distance=peakparams.getfloat('mindistance') / ns_per_sample, 
-        width=(peakparams.getfloat('minwidth') / ns_per_sample, peakparams.getfloat('maxwidth') / ns_per_sample), 
+        wave*-1.0,
+        height=((peakparams.getfloat('minheight')),
+                peakparams.getfloat('maxheight')),
+        distance=peakparams.getfloat('mindistance') / ns_per_sample,
+        width=(peakparams.getfloat('minwidth') / ns_per_sample,
+               peakparams.getfloat('maxwidth') / ns_per_sample),
         rel_height=peakparams.getfloat('relheight'))
     return peaks, peakinfo
 
-def coarse_correlate(leftwave, 
+
+def coarse_correlate(leftwave,
                      leftpeaks,
-                     rightwave, 
+                     rightwave,
                      rightpeaks,
                      max_offset,
                      minrelpulseheight=0.5,
@@ -353,11 +363,13 @@ def coarse_correlate(leftwave,
     # should not be multiple identified peaks within a given distance anyway
     peak_pairs = []
     offsets = []
+    leftpeakheights = leftwave[leftpeaks]
+    rightpeakheights = rightwave[rightpeaks]
     # Loop through the shorter of the two lists
     first_itr = leftpeaks if len(leftpeaks) <= len(rightpeaks) else rightpeaks
-    first_info = leftpeaks if first_itr is leftpeaks else rightpeaks
+    first_info = leftpeakheights if first_itr is leftpeaks else rightpeakheights
     sec_itr = leftpeaks if first_itr is not leftpeaks else rightpeaks
-    sec_info = leftpeaks if first_info is not leftpeaks else rightpeaks
+    sec_info = leftpeakheights if first_info is not leftpeaks else rightpeakheights
     for i, ipeak in enumerate(first_itr):
         potential_partners = []
         partner_offsets = []
@@ -376,7 +388,7 @@ def coarse_correlate(leftwave,
                     partner_offsets.append(offset)
                     partner_heights.append(relative_height)
                     #peak_pairs.append((ipeak, jpeak))
-                    #offsets.append(offset)
+                    # offsets.append(offset)
         try:
             partner_peak = np.argmax(partner_heights)
             peak_pairs.append((ipeak, potential_partners[partner_peak]))
@@ -387,13 +399,14 @@ def coarse_correlate(leftwave,
     # save the relative heights as well
     return peak_pairs, offsets
 
-def correlate_peaks(leftpeaks, 
-                    leftpeakinfo, 
+
+def correlate_peaks(leftpeaks,
+                    leftpeakinfo,
                     rightpeaks,
-                    rightpeakinfo, 
-                    max_offset, 
+                    rightpeakinfo,
+                    max_offset,
                     minrelpulseheight=0.5,
-                    maxrelpulseheight=1.5, 
+                    maxrelpulseheight=1.5,
                     ns_per_sample=0.2):
     # An attempt at correlating peaks on two waveform produced from either side of a stripline
     # Looks for pulses within max_offset (ns) and chooses the one with the largest pulse height
@@ -418,13 +431,14 @@ def correlate_peaks(leftpeaks,
             # check that pulses are within max_offset of each other in time
             if abs(offset) < max_offset:
                 # check that the pulse height is within rel_threshold
-                relative_height = first_info['peak_heights'][i] / sec_info['peak_heights'][j]
+                relative_height = first_info['peak_heights'][i] / \
+                    sec_info['peak_heights'][j]
                 if minrelpulseheight < relative_height < maxrelpulseheight:
                     potential_partners.append(jpeak)
                     partner_offsets.append(offset)
                     partner_heights.append(relative_height)
                     #peak_pairs.append((ipeak, jpeak))
-                    #offsets.append(offset)
+                    # offsets.append(offset)
         try:
             partner_peak = np.argmax(partner_heights)
             peak_pairs.append((ipeak, potential_partners[partner_peak]))
@@ -435,9 +449,10 @@ def correlate_peaks(leftpeaks,
     # save the relative heights as well
     return peak_pairs, offsets
 
+
 def correlate_peaks_new(leftwave, rightwave,
                         leftpeaks,
-                        leftpeakinfo, 
+                        leftpeakinfo,
                         rightpeaks,
                         rightpeakinfo,
                         max_offset,
@@ -455,13 +470,14 @@ def correlate_peaks_new(leftwave, rightwave,
             offset = (lpeak - rpeak) * ns_per_sample
             if abs(offset) < max_offset:
                 # check that the pulse height is within rel_threshold
-                relative_height = leftpeakinfo['peak_heights'][i] / rightpeakinfo['peak_heights'][j]
+                relative_height = leftpeakinfo['peak_heights'][i] / \
+                    rightpeakinfo['peak_heights'][j]
                 if minrelpulseheight < relative_height < maxrelpulseheight:
                     potential_pairs.append((lpeak, rpeak))
                     potential_offsets.append(offset)
                     potential_heights.append(relative_height)
     conflicts = []
-    #if len(potential_pairs) == 1:
+    # if len(potential_pairs) == 1:
     #    return peak_pairs, offsets
     for pairpair in combinations(potential_pairs, 2):
         print(pairpair)
@@ -487,7 +503,8 @@ def correlate_peaks_new(leftwave, rightwave,
     #     pdb.set_trace()
     # return
     return peak_pairs, offsets
-        
+
+
 def cubic_spline(x, y, ratio=3, plot=False):
     newx = np.linspace(x[0], x[-1], ratio * len(x))
     interpfunc = interpolate.interp1d(x, y, kind="cubic")
