@@ -71,15 +71,18 @@ class StripEvent():
                 self.rawleftwaveform, int(peak[0]), LOOKBACK, LOOKFORWARD)
             slicedright = caenreader.sliceAroundPeak(
                 self.rawrightwaveform, int(peak[1]), LOOKBACK, LOOKFORWARD)
+            # Do pulse width cut on slicedleft/right
             leftpulse = Pulse(slicedleft)
             rightpulse = Pulse(slicedright)
             self.pulses.append((leftpulse, rightpulse))
 
     def _find_peaks_custom(self):
+        print("Finding left peaks")
         leftpeaks = caenreader.findPeaks(
-            self.rawleftwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 3.0)
+            self.rawleftwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
+        print("Finding right peaks")
         rightpeaks = caenreader.findPeaks(
-            self.rawrightwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 4.0)
+            self.rawrightwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
         return np.asarray(leftpeaks), np.asarray(rightpeaks)
 
     def _find_peak_heights(self):
@@ -152,15 +155,17 @@ class StripEvent():
 class Pulse():
     # Probably shouldn't interact with Pulse directly, only through StripEvent
 
-    def __init__(self, wave, ns_per_sample=NS_PER_SAMPLE) -> None:
-        self._rawwave = wave.wave  # c++ vector<float> object
-        self.wave = np.asarray(wave.wave)
-        self._rawtimes = wave.times  # c++ vector<float> object
-        self.times = np.asarray(wave.times)
+    def __init__(self, pulse, ns_per_sample=NS_PER_SAMPLE) -> None:
+        # pulse is c++ struct
+        self._rawwave = pulse.wave  # c++ vector<float> object
+        self.wave = np.asarray(pulse.wave)
+        self._rawtimes = pulse.times  # c++ vector<float> object
+        self.times = np.asarray(pulse.times)
         self.ns_per_sample = ns_per_sample
         self.smoothedtimes, self.smoothedwave = self._interpolate()
         #self.peak = np.argmin(self.smoothedwave) if not peak else peak
         #self.peak = int(len(self.smoothedwave) / 2.0)
+        self.rawpeak = pulse.peakSample
         self.peak = self._getpeak()
         if self.peak:
             self.peaktime = self.smoothedtimes[self.peak]
@@ -184,17 +189,21 @@ class Pulse():
         #     return peak[0][0]
         # except IndexError:
         peaks, peakinfo = signal.find_peaks(
-            self.smoothedwave*-1, height=4, distance=3.0/NS_PER_SAMPLE * INTERPFACTOR, width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
+            self.smoothedwave*-1,
+            height=4,
+            distance=3.0/NS_PER_SAMPLE * INTERPFACTOR,
+            width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
         if len(peaks) != 1:
             self.plot()
+            breakpoint()
             return None
         return peaks[0]
 
     def plot(self):
         plt.plot(self.smoothedtimes, self.smoothedwave)
         plt.plot(self.times, self.wave, "x")
-        # plt.plot(self.smoothedtimes[self.peak],
-        #          self.smoothedwave[self.peak], "x", c="r")
+        plt.plot(self.times[self.rawpeak],
+                 self.wave[self.rawpeak], "x", c="r")
         plt.show()
 
 # "An event" = two pulses with calculated offset and amplitude
@@ -237,16 +246,26 @@ if __name__ == "__main__":
     except IndexError:
         sys.exit("Specify a stripnumber")
     lheights = []
+    rheights = []
     for event in get_strip_events(7, base_dir):
         if event.pulses:
             for pulse in event.pulses:
                 if pulse[0].height is not None:
                     lheights.append(pulse[0].height)
-    th1d = root.TH1D("test", "test", 30, 0, 50)
+                    rheights.append(pulse[1].height)
+    lefthist = root.TH1D("left", "left", 30, 0, 50)
     for value in lheights:
         try:
-            th1d.Fill(-value)
+            lefthist.Fill(-value)
         except TypeError:
             breakpoint()
-    th1d.Draw()
+    lefthist.Draw()
+    breakpoint()
+    righthist = root.TH1D("right", "right", 30, 0, 50)
+    for value in lheights:
+        try:
+            righthist.Fill(-value)
+        except TypeError:
+            breakpoint()
+    righthist.Draw()
     breakpoint()

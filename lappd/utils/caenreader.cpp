@@ -296,14 +296,14 @@ namespace CAENReader
         float threshold = value * fraction;
         int backSample = -1;
         int forwardSample = -1;
-        float width;
+        float width = 100000000;
         // Backwards scan
         for (int index = peakSample; index >= 0; index--)
         {
             if (wave[index] > threshold)
             {
                 int overThresh = 0;
-                for (int i = 1; i < 6; i++)
+                for (int i = 1; i < 4; i++)
                 {
                     float ivalue = wave[index - i];
                     if (ivalue > threshold)
@@ -327,7 +327,7 @@ namespace CAENReader
             if (wave[index] > threshold)
             {
                 int overThresh = 0;
-                for (int i = 1; i < 6; i++)
+                for (int i = 1; i < 4; i++)
                 {
                     float ivalue = wave[index + i];
                     if (ivalue > threshold)
@@ -348,7 +348,7 @@ namespace CAENReader
         }
         if (backSample < 0 || forwardSample < 0)
         {
-            width = -1;
+            width = 100000000;
         }
         else
         {
@@ -401,8 +401,10 @@ namespace CAENReader
             if (peakIsGood)
             {
                 // Peak location is good, now check rough pulse width
-                if (1.0 < pulseWidth(wave, index, 0.2) < width)
+                float pw = pulseWidth(wave, index, 0.25);
+                if (pw > 1.0 && pw < width)
                 {
+                    std::cout << "Peak found at: " << index << " with pulse width: " << pw << std::endl;
                     peaks.push_back(index);
                 }
             }
@@ -494,7 +496,7 @@ namespace CAENReader
         return slicedWave;
     }
 
-    CAENWave sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
+    Pulse sliceAroundPeak(CAENWave wave, int peakSample, float lookback, float lookforward)
     {
         int backSamples = std::floor(lookback / NS_PER_SAMPLE);
         int forwardSamples = std::floor(lookforward / NS_PER_SAMPLE);
@@ -510,11 +512,12 @@ namespace CAENReader
         }
         std::vector<float> slicedWave = {wave.wave.begin() + windowStart, wave.wave.begin() + windowEnd};
         std::vector<float> slicedTimes = {wave.times.begin() + windowStart, wave.times.begin() + windowEnd};
-        return CAENWave{
+        return Pulse{
             wave.header,
             slicedWave,
             slicedTimes,
-            wave.eventNo};
+            wave.eventNo,
+            peakSample - windowStart};
     }
 
     bool correlateAcrossStrip(CAENProcessedWave firstWave, std::string secondFilename, float peakHeightReq = 0.8)
