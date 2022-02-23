@@ -81,7 +81,7 @@ class StripEvent():
                 # Use the interpolated pulse
                 self.offsets.append(offset) if offset < MINDISTANCE else self.offsets.append(
                     leftpulse.rawpeak - rightpulse.rawpeak)
-            self.pulses.append((leftpulse, rightpulse))
+                self.pulses.append((leftpulse, rightpulse))
 
     def _find_peaks_custom(self):
         #print("Finding left peaks")
@@ -202,8 +202,8 @@ class Pulse():
             distance=3.0/NS_PER_SAMPLE * INTERPFACTOR,
             width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
         if len(peaks) != 1:
-            self.plot()
-            pdb.set_trace()
+            #self.plot()
+            #pdb.set_trace()
             return None
         return peaks[0]
 
@@ -255,13 +255,18 @@ if __name__ == "__main__":
         sys.exit("Specify a stripnumber")
     lheights = []
     rheights = []
+    offsets = []
     for event in get_strip_events(stripnumber, base_dir):
         if event.pulses:
             for i, pulse in enumerate(event.pulses):
                 if pulse[0].height is not None:
                     lheights.append(pulse[0].height)
                     rheights.append(pulse[1].height)
-                    print("Offset: ", event.offsets[i])
+                    try:
+                        offsets.append(event.offsets[i])
+                        #print("Offset: ", event.offsets[i])
+                    except IndexError:
+                        pdb.set_trace()
     lefthist = root.TH1D("left", "left", 30, 0, 50)
     for value in lheights:
         try:
@@ -271,10 +276,18 @@ if __name__ == "__main__":
     lefthist.Draw()
     pdb.set_trace()
     righthist = root.TH1D("right", "right", 30, 0, 50)
-    for value in lheights:
+    for value in rheights:
         try:
             righthist.Fill(-value)
         except TypeError:
             pdb.set_trace()
     righthist.Draw()
+    pdb.set_trace()
+    offsethist = root.TH1D("offset", "offset", 100, -2, 2)
+    for value in offsets:
+        try:
+            offsethist.Fill(value)
+        except TypeError:
+            pdb.set_trace()
+    offsethist.Draw()
     pdb.set_trace()
