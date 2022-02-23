@@ -27,7 +27,7 @@ peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
 
 NS_PER_SAMPLE = daqconfig.getfloat("nspersample")
-MINHEIGHT = -peakparams.getfloat("minheight")  # mV
+MINHEIGHT = peakparams.getfloat("minheight")  # mV
 MINDISTANCE = peakparams.getfloat("mindistance")
 RELHEIGHT = peakparams.getfloat("relheight")
 MINRELPULSEHEIGHT = peakparams.getfloat("minrelpulseheight")
@@ -60,12 +60,13 @@ class StripEvent():
         # The peaks for each PAIR of Pulses
         self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
         self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
-        self.peaks, self.offsets = self.coarse_correlate(MAXOFFSET)
+        self.peaks, self.coarse_offsets = self.coarse_correlate(MAXOFFSET)
         if self.peaks:
             self.passed = True
         else:
             self.passed = False
         self.pulses = []
+        self.offsets = []
         for peak in self.peaks:
             slicedleft = caenreader.sliceAroundPeak(
                 self.rawleftwaveform, int(peak[0]), LOOKBACK, LOOKFORWARD)
@@ -74,15 +75,21 @@ class StripEvent():
             # Do pulse width cut on slicedleft/right
             leftpulse = Pulse(slicedleft)
             rightpulse = Pulse(slicedright)
+            if (leftpulse.peak is not None) and (rightpulse.peak is not None):
+                offset = (leftpulse.peak - rightpulse.peak) * \
+                    NS_PER_SAMPLE / INTERPFACTOR
+                # Use the interpolated pulse
+                self.offsets.append(offset) if offset < MINDISTANCE else self.offsets.append(
+                    leftpulse.rawpeak - rightpulse.rawpeak)
             self.pulses.append((leftpulse, rightpulse))
 
     def _find_peaks_custom(self):
-        print("Finding left peaks")
+        #print("Finding left peaks")
         leftpeaks = caenreader.findPeaks(
-            self.rawleftwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
-        print("Finding right peaks")
+            self.rawleftwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
+        #print("Finding right peaks")
         rightpeaks = caenreader.findPeaks(
-            self.rawrightwaveform.wave, MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
+            self.rawrightwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
         return np.asarray(leftpeaks), np.asarray(rightpeaks)
 
     def _find_peak_heights(self):
@@ -118,7 +125,7 @@ class StripEvent():
                         relative_height = self.leftpeak_heights[i] / \
                             self.rightpeak_heights[j]
                     except IndexError:
-                        breakpoint()
+                        pdb.set_trace()
                     if minrelpulseheight < relative_height < maxrelpulseheight:
                         potential_partners.append(jpeak)
                         partner_offsets.append(offset)
@@ -154,6 +161,7 @@ class StripEvent():
 
 class Pulse():
     # Probably shouldn't interact with Pulse directly, only through StripEvent
+    # Maybe pulse should be a pair of events? Then the offset can be an attribute
 
     def __init__(self, pulse, ns_per_sample=NS_PER_SAMPLE) -> None:
         # pulse is c++ struct
@@ -190,12 +198,12 @@ class Pulse():
         # except IndexError:
         peaks, peakinfo = signal.find_peaks(
             self.smoothedwave*-1,
-            height=4,
+            height=MINHEIGHT,
             distance=3.0/NS_PER_SAMPLE * INTERPFACTOR,
             width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
         if len(peaks) != 1:
             self.plot()
-            breakpoint()
+            pdb.set_trace()
             return None
         return peaks[0]
 
@@ -247,25 +255,26 @@ if __name__ == "__main__":
         sys.exit("Specify a stripnumber")
     lheights = []
     rheights = []
-    for event in get_strip_events(7, base_dir):
+    for event in get_strip_events(stripnumber, base_dir):
         if event.pulses:
-            for pulse in event.pulses:
+            for i, pulse in enumerate(event.pulses):
                 if pulse[0].height is not None:
                     lheights.append(pulse[0].height)
                     rheights.append(pulse[1].height)
+                    print("Offset: ", event.offsets[i])
     lefthist = root.TH1D("left", "left", 30, 0, 50)
     for value in lheights:
         try:
             lefthist.Fill(-value)
         except TypeError:
-            breakpoint()
+            pdb.set_trace()
     lefthist.Draw()
-    breakpoint()
+    pdb.set_trace()
     righthist = root.TH1D("right", "right", 30, 0, 50)
     for value in lheights:
         try:
             righthist.Fill(-value)
         except TypeError:
-            breakpoint()
+            pdb.set_trace()
     righthist.Draw()
-    breakpoint()
+    pdb.set_trace()
