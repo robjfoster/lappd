@@ -76,8 +76,9 @@ class StripEvent():
             leftpulse = Pulse(slicedleft)
             rightpulse = Pulse(slicedright)
             if (leftpulse.peak is not None) and (rightpulse.peak is not None):
-                offset = (leftpulse.peak - rightpulse.peak) * \
-                    NS_PER_SAMPLE / INTERPFACTOR
+                # offset = (leftpulse.peak - rightpulse.peak) * \
+                #    NS_PER_SAMPLE / INTERPFACTOR
+                offset = leftpulse.peaktime - rightpulse.peaktime
                 # Use the interpolated pulse
                 self.offsets.append(offset) if offset < MINDISTANCE else self.offsets.append(
                     leftpulse.rawpeak - rightpulse.rawpeak)
@@ -202,8 +203,8 @@ class Pulse():
             distance=3.0/NS_PER_SAMPLE * INTERPFACTOR,
             width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
         if len(peaks) != 1:
-            #self.plot()
-            #pdb.set_trace()
+            # self.plot()
+            # pdb.set_trace()
             return None
         return peaks[0]
 
@@ -217,12 +218,8 @@ class Pulse():
 # "An event" = two pulses with calculated offset and amplitude
 
 
-def build_strip_event(stripnumber, event_no, dir):
-    leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
-    leftfile = gdw.get_filename(leftchannel, base=dir)
+def build_strip_event(leftfile, rightfile, event_no):
     leftwave = caenreader.readCAENWave(leftfile, event_no)
-    rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
-    rightfile = gdw.get_filename(rightchannel, base=dir)
     rightwave = caenreader.readCAENWave(rightfile, event_no)
     caenreader.preprocessWave(leftwave)
     caenreader.preprocessWave(rightwave)
@@ -241,7 +238,7 @@ def get_strip_events(stripnumber, dir):
         sys.exit("Each side of strip does not have same number of entries")
     print(f"{leftentries} entries for this strip.")
     for entry in range(leftentries):
-        yield build_strip_event(stripnumber, entry, dir)
+        yield build_strip_event(leftfile, rightfile, entry)
 
 
 if __name__ == "__main__":
