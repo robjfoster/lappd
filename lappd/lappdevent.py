@@ -48,6 +48,30 @@ class LAPPDEvent():
 
 class StripEvent():
 
+    @classmethod
+    def itr_file(cls, stripnumber, dir):
+        leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
+        leftfile = gdw.get_filename(leftchannel, base=dir)
+        rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
+        rightfile = gdw.get_filename(rightchannel, base=dir)
+        leftentries = caenreader.getNumberEntries(leftfile)
+        rightentries = caenreader.getNumberEntries(rightfile)
+        print(f"Left channel file: {leftfile}")
+        print(f"Right channel file: {rightfile}")
+        if leftentries != rightentries:
+            sys.exit("Each side of strip does not have same number of entries")
+        print(f"{leftentries} entries for this strip.")
+        for entry in range(leftentries):
+            yield cls.build(leftfile, rightfile, entry)
+
+    @classmethod
+    def build(cls, leftfile, rightfile, event_no):
+        leftwave = caenreader.readCAENWave(leftfile, event_no)
+        rightwave = caenreader.readCAENWave(rightfile, event_no)
+        caenreader.preprocessWave(leftwave)
+        caenreader.preprocessWave(rightwave)
+        return cls(leftwave, rightwave)
+
     def __init__(self, leftwaveform, rightwaveform, cfg=None) -> None:
         # Pulses should be a list of tuple pairs
         # or should __init__ find all pulses from the left and right waveforms?
@@ -215,31 +239,6 @@ class Pulse():
                  self.wave[self.rawpeak], "x", c="r")
         plt.show()
 
-# "An event" = two pulses with calculated offset and amplitude
-
-
-def build_strip_event(leftfile, rightfile, event_no):
-    leftwave = caenreader.readCAENWave(leftfile, event_no)
-    rightwave = caenreader.readCAENWave(rightfile, event_no)
-    caenreader.preprocessWave(leftwave)
-    caenreader.preprocessWave(rightwave)
-    event = StripEvent(leftwave, rightwave)
-    return event
-
-
-def get_strip_events(stripnumber, dir):
-    leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
-    leftfile = gdw.get_filename(leftchannel, base=dir)
-    rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
-    rightfile = gdw.get_filename(rightchannel, base=dir)
-    leftentries = caenreader.getNumberEntries(leftfile)
-    rightentries = caenreader.getNumberEntries(rightfile)
-    if leftentries != rightentries:
-        sys.exit("Each side of strip does not have same number of entries")
-    print(f"{leftentries} entries for this strip.")
-    for entry in range(leftentries):
-        yield build_strip_event(leftfile, rightfile, entry)
-
 
 if __name__ == "__main__":
     try:
@@ -253,7 +252,7 @@ if __name__ == "__main__":
     lheights = []
     rheights = []
     offsets = []
-    for event in get_strip_events(stripnumber, base_dir):
+    for event in StripEvent.itr_file(stripnumber, base_dir):
         if event.pulses:
             for i, pulse in enumerate(event.pulses):
                 if pulse[0].height is not None:
