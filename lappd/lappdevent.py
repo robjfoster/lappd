@@ -2,15 +2,17 @@ import os
 import pdb
 import sys
 import time
+from typing import Generator
 
 import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
+from mpl_toolkits import mplot3d
 from scipy import signal
 
-from utils.lappdcfg import config as lcfg
 import utils.gimmedatwave as gdw
 import utils.sigutils as su
+from utils.lappdcfg import config as lcfg
 
 root.gSystem.Load(os.path.dirname(os.path.realpath(__file__))
                   + "/utils/caenreader_cpp.so")
@@ -40,16 +42,160 @@ LOOKFORWARD = peakparams.getfloat("slicelookforward")
 
 class LAPPDEvent():
 
-    def __init__(self) -> None:
+    def __init__(self, stripevents) -> None:
+        self.stripevents = stripevents
+
+    # Need a "find hits" method which looks at all the pulse pairs and constructs
+    # hits. A method that looks at all strip lines and produces a list of estimated
+    # photon hits is basically the ultimate aim.
+
+    # Need to look through all strips to see if there is a pulse, then slice all
+    # strips around that pulse
+
+    @classmethod
+    def build(cls, stripfiles, event_no):
+        stripevents = {}
+        for strip in stripfiles:
+            leftfile = stripfiles[strip][0]
+            rightfile = stripfiles[strip][1]
+            stripevent = StripEvent.build(leftfile, rightfile, event_no)
+            stripevents[strip] = stripevent
+        return cls(stripevents)
+
+    @classmethod
+    def itr_num(cls, dir, n_events=1):
+        stripfiles = {}
+        for stripnumber in range(14, -15, -1):
+            if stripnumber == 0:
+                continue
+            print(f"Looking for strip {stripnumber}")
+            leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
+            rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
+            try:
+                leftfile = gdw.get_filename(leftchannel, base=dir)
+                rightfile = gdw.get_filename(rightchannel, base=dir)
+            except FileNotFoundError:
+                print(f"Did not find files for strip {stripnumber}, skipping.")
+                continue
+            leftentries = caenreader.getNumberEntries(leftfile)
+            rightentries = caenreader.getNumberEntries(rightfile)
+            print(f"Left channel file: {leftfile}")
+            print(f"Right channel file: {rightfile}")
+            if leftentries != rightentries:
+                sys.exit("Each side of strip does not have same number of entries")
+            print(f"{leftentries} entries for this strip.")
+            stripfiles[stripnumber] = (leftfile, rightfile)
+        for event_no in range(n_events):
+            yield cls.build(stripfiles, event_no)
+
+    def _get_centroids(self):
         pass
+
+    def create_LAPPD_pulse(self, stripnumber):
+        thisstripevent = self.stripevents[stripnumber]
+        for pulsepair in thisstripevent.pulses:
+            for strip in self.stripevents.keys():
+                if strip == stripnumber:
+                    pass
+
+    def plot_samples(self):
+        @np.vectorize
+        def get_sample(strip, sample):
+            return self.stripevents[strip].leftwaveform[sample] * -1
+        strips = [strip for strip in self.stripevents.keys()]
+        samples = [i for i in range(1014)]
+        x, y = np.meshgrid(strips, samples)
+        z = get_sample(x, y)
+        fig = plt.figure()
+        ax = plt.axes(projection='3d')
+        ax.view_init(elev=25.0, azim=-135)
+        ax.set_xlabel("Samples")
+        ax.set_ylabel("Stripnumber")
+        ax.set_zlabel("Amplitude (mV)")
+        #ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
+        for strip in strips:
+            ax.plot3D(samples, [strip for i in range(1014)],
+                      get_sample(strip, [i for i in range(1014)]), linestyle="-", marker="o", markersize=1, linewidth=1)
+        plt.show()
+
 
 # NEED CONSISTENT NAMING CONVENTION FOR WAVE, WAVEFORM etc
 
 
 class StripEvent():
 
+    def __init__(self, leftwaveform, rightwaveform, cfg=None, peaks=None) -> None:
+
+        # Maybe don't find pulses by default, have an add_pulse and find_pulses
+        # methods to allow for searching specific striplines for events and then slicing
+        # other StripEvents at the same location
+
+        # Maybe rename peaks to slice_points? or similar. The real peaks are in the
+        # PulsePairs
+
+        self.rawleftwaveform = leftwaveform
+        self.leftwaveform = np.asarray(leftwaveform.wave)
+        self.rawrightwaveform = rightwaveform
+        self.rightwaveform = np.asarray(rightwaveform.wave)
+        self.cfg = cfg  # Or just use global?
+        # The peaks for each PAIR of Pulses
+        self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
+        self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
+        if peaks is None:
+            self.peaks, self.coarse_offsets = self.coarse_correlate(MAXOFFSET)
+            self.triggered = True
+        else:
+            self.peaks = peaks
+            self.coarse_offsets = None
+            self.triggered = False
+        if self.peaks:
+            self.passed = True
+        else:
+            self.passed = False
+        self.pulses = []
+        self.offsets = []
+        for peak in self.peaks:
+            # Should both waves be sliced at the same point? i.e. midpoint between two peaks
+            if self.triggered:
+                self.search_pulse(
+                    int((peak[0] + peak[1]) / 2), LOOKBACK, LOOKFORWARD)
+            else:
+                self.add_pulse(
+                    int((peak[0] + peak[1]) / 2), LOOKBACK, LOOKFORWARD)
+            # slice_point = int((peak[0] + peak[1]) / 2)
+            # slicedleft = caenreader.sliceAroundPeak(
+            #     self.rawleftwaveform, slice_point, LOOKBACK, LOOKFORWARD)
+            # slicedright = caenreader.sliceAroundPeak(
+            #     self.rawrightwaveform, slice_point, LOOKBACK, LOOKFORWARD)
+            # # Do pulse width cut on slicedleft/right
+            # # leftpulse = Pulse(slicedleft)
+            # # rightpulse = Pulse(slicedright)
+            # pulsepair = PulsePair(slicedleft, slicedright,
+            #                       slice_point=slice_point)
+            # if pulsepair.offset is not None:
+            #     self.pulses.append(pulsepair)
+            # if (pulsepair.left.peak is not None) and (pulsepair.right.peak is not None):
+            #     # offset = (leftpulse.peak - rightpulse.peak) * \
+            #     #    NS_PER_SAMPLE / INTERPFACTOR
+            #     offset = leftpulse.peaktime - rightpulse.peaktime
+            #     # Use the interpolated pulse
+            #     self.offsets.append(offset) if offset < MINDISTANCE else self.offsets.append(
+            #         leftpulse.rawpeak - rightpulse.rawpeak)
+            #     self.pulses.append((leftpulse, rightpulse))
+
     @classmethod
-    def itr_file(cls, stripnumber, dir):
+    def build(cls, leftfile: str, rightfile: str, event_no: int
+              ) -> "StripEvent":
+        leftwave = caenreader.readCAENWave(leftfile, event_no)
+        rightwave = caenreader.readCAENWave(rightfile, event_no)
+        caenreader.preprocessWave(leftwave)
+        caenreader.preprocessWave(rightwave)
+        return cls(leftwave, rightwave)
+
+    @classmethod
+    def itr_file(cls, stripnumber: int, dir: str
+                 ) -> Generator["StripEvent", None, None]:
+        """Yields all events from a single strip. Finds files from dir."""
         leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
         leftfile = gdw.get_filename(leftchannel, base=dir)
         rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
@@ -64,55 +210,11 @@ class StripEvent():
         for entry in range(leftentries):
             yield cls.build(leftfile, rightfile, entry)
 
-    @classmethod
-    def build(cls, leftfile, rightfile, event_no):
-        leftwave = caenreader.readCAENWave(leftfile, event_no)
-        rightwave = caenreader.readCAENWave(rightfile, event_no)
-        caenreader.preprocessWave(leftwave)
-        caenreader.preprocessWave(rightwave)
-        return cls(leftwave, rightwave)
-
-    def __init__(self, leftwaveform, rightwaveform, cfg=None) -> None:
-        # Pulses should be a list of tuple pairs
-        # or should __init__ find all pulses from the left and right waveforms?
-        # Waveforms should be preprocessed before creating StripEvent
-        self.rawleftwaveform = leftwaveform
-        self.leftwaveform = np.asarray(leftwaveform.wave)
-        self.rawrightwaveform = rightwaveform
-        self.rightwaveform = np.asarray(rightwaveform.wave)
-        self.cfg = cfg  # Or just use global?
-        # The peaks for each PAIR of Pulses
-        self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
-        self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
-        self.peaks, self.coarse_offsets = self.coarse_correlate(MAXOFFSET)
-        if self.peaks:
-            self.passed = True
-        else:
-            self.passed = False
-        self.pulses = []
-        self.offsets = []
-        for peak in self.peaks:
-            slicedleft = caenreader.sliceAroundPeak(
-                self.rawleftwaveform, int(peak[0]), LOOKBACK, LOOKFORWARD)
-            slicedright = caenreader.sliceAroundPeak(
-                self.rawrightwaveform, int(peak[1]), LOOKBACK, LOOKFORWARD)
-            # Do pulse width cut on slicedleft/right
-            leftpulse = Pulse(slicedleft)
-            rightpulse = Pulse(slicedright)
-            if (leftpulse.peak is not None) and (rightpulse.peak is not None):
-                # offset = (leftpulse.peak - rightpulse.peak) * \
-                #    NS_PER_SAMPLE / INTERPFACTOR
-                offset = leftpulse.peaktime - rightpulse.peaktime
-                # Use the interpolated pulse
-                self.offsets.append(offset) if offset < MINDISTANCE else self.offsets.append(
-                    leftpulse.rawpeak - rightpulse.rawpeak)
-                self.pulses.append((leftpulse, rightpulse))
-
     def _find_peaks_custom(self):
-        #print("Finding left peaks")
+        # print("Finding left peaks")
         leftpeaks = caenreader.findPeaks(
             self.rawleftwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
-        #print("Finding right peaks")
+        # print("Finding right peaks")
         rightpeaks = caenreader.findPeaks(
             self.rawrightwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
         return np.asarray(leftpeaks), np.asarray(rightpeaks)
@@ -121,6 +223,36 @@ class StripEvent():
         leftpeak_heights = self.leftwaveform[self.leftpeaks]
         rightpeak_heights = self.rightwaveform[self.rightpeaks]
         return leftpeak_heights, rightpeak_heights
+
+    def add_pulse(self,
+                  slice_point: int,
+                  lookback: float = LOOKBACK,
+                  lookforward: float = LOOKFORWARD
+                  ) -> None:
+        """Adds a pulse centered around slice_point to the StripEvent"""
+        slicedleft = caenreader.sliceAroundPeak(
+            self.rawleftwaveform, slice_point, lookback, lookforward)
+        slicedright = caenreader.sliceAroundPeak(
+            self.rawrightwaveform, slice_point, lookback, lookforward)
+        pulsepair = PulsePair(slicedleft, slicedright,
+                              slice_point=slice_point)
+        self.pulses.append(pulsepair)
+
+    def search_pulse(self,
+                     slice_point: int,
+                     lookback: float = LOOKBACK,
+                     lookforward: float = LOOKFORWARD
+                     ) -> None:
+        """Searches for a pulse centered around slice_point to the StripEvent,
+        appends it if it finds a peak but ignores if not."""
+        slicedleft = caenreader.sliceAroundPeak(
+            self.rawleftwaveform, slice_point, lookback, lookforward)
+        slicedright = caenreader.sliceAroundPeak(
+            self.rawrightwaveform, slice_point, lookback, lookforward)
+        pulsepair = PulsePair(slicedleft, slicedright,
+                              slice_point=slice_point)
+        if pulsepair.peaks_present:
+            self.pulses.append(pulsepair)
 
     def coarse_correlate(self,
                          max_offset,
@@ -133,16 +265,13 @@ class StripEvent():
         # should not be multiple identified peaks within a given distance anyway
         peak_pairs = []
         offsets = []
-        # Loop through the shorter of the two lists
+        # Loop through left peaks first
         for i, ipeak in enumerate(self.leftpeaks):
             potential_partners = []
             partner_offsets = []
             partner_heights = []
             for j, jpeak in enumerate(self.rightpeaks):
                 offset = (ipeak - jpeak) * ns_per_sample
-                # if first_peaks is rightpeaks then ipeak is right end of strip
-                # we want to do left - right
-                #offset = offset * -1 if first_peaks is self.rightpeaks else offset
                 # check that pulses are within max_offset of each other in time
                 if abs(offset) < max_offset:
                     # check that the pulse height is within rel_threshold
@@ -155,7 +284,7 @@ class StripEvent():
                         potential_partners.append(jpeak)
                         partner_offsets.append(offset)
                         partner_heights.append(relative_height)
-                        #peak_pairs.append((ipeak, jpeak))
+                        # peak_pairs.append((ipeak, jpeak))
                         # offsets.append(offset)
             try:
                 partner_peak = np.argmax(partner_heights)
@@ -188,6 +317,8 @@ class Pulse():
     # Probably shouldn't interact with Pulse directly, only through StripEvent
     # Maybe pulse should be a pair of events? Then the offset can be an attribute
 
+    # Split Pulse into a different file?
+
     def __init__(self, pulse, ns_per_sample=NS_PER_SAMPLE) -> None:
         # pulse is c++ struct
         self._rawwave = pulse.wave  # c++ vector<float> object
@@ -196,16 +327,19 @@ class Pulse():
         self.times = np.asarray(pulse.times)
         self.ns_per_sample = ns_per_sample
         self.smoothedtimes, self.smoothedwave = self._interpolate()
-        #self.peak = np.argmin(self.smoothedwave) if not peak else peak
-        #self.peak = int(len(self.smoothedwave) / 2.0)
+        # self.peak = np.argmin(self.smoothedwave) if not peak else peak
+        # self.peak = int(len(self.smoothedwave) / 2.0)
         self.rawpeak = pulse.peakSample
         self.peak = self._getpeak()
         if self.peak:
             self.peaktime = self.smoothedtimes[self.peak]
             self.height = self.smoothedwave[self.peak]
+            self.cfpeak = su.cfd(self.smoothedwave, 0.2,
+                                 times=self.smoothedtimes, userpeak=self.peak)
         else:
             self.peaktime = None
             self.height = None
+            self.cfpeak = None
 
     def _interpolate(self, interpfactor=INTERPFACTOR):
         x, y = su.cubic_spline(self.times, self.wave, interpfactor)
@@ -226,6 +360,7 @@ class Pulse():
             height=MINHEIGHT,
             distance=3.0/NS_PER_SAMPLE * INTERPFACTOR,
             width=1.0/NS_PER_SAMPLE * INTERPFACTOR)
+        # TODO: Handle finding multiple peaks in a pulse
         if len(peaks) != 1:
             # self.plot()
             # pdb.set_trace()
@@ -240,6 +375,41 @@ class Pulse():
         plt.show()
 
 
+class PulsePair():
+
+    # Adjust the logic here for when a peak is not found in the left or
+    # right pulse.
+
+    def __init__(self, leftpulse, rightpulse, slice_point=None) -> None:
+        self.left = Pulse(leftpulse)
+        self.right = Pulse(rightpulse)
+        self.slice_point = slice_point
+        if (self.left.peak is not None) and (self.right.peak is not None):
+            self.offset = self._get_offset()
+            self.peaks_present = True
+        else:
+            self.peaks_present = False
+            self.offset = None
+        if self.offset is not None:
+            if self.left.cfpeak is not None and self.right.cfpeak is not None:
+                self.cfd_offset = self.left.cfpeak - self.right.cfpeak
+            else:
+                self.cfd_offset = None
+        else:
+            self.cfd_offset = None
+
+    def _get_offset(self):
+        offset = self.left.peaktime - self.right.peaktime
+        return offset if offset < MINDISTANCE else None
+
+
+def testLAPPDEvent():
+    for levent in LAPPDEvent.itr_num(base_dir, 10):
+        levent.plot_samples()
+        pdb.set_trace()
+        pass
+
+
 if __name__ == "__main__":
     try:
         base_dir = sys.argv[1]
@@ -249,26 +419,27 @@ if __name__ == "__main__":
         stripnumber = sys.argv[2]
     except IndexError:
         sys.exit("Specify a stripnumber")
+    testLAPPDEvent()
     lheights = []
     rheights = []
     offsets = []
     for event in StripEvent.itr_file(stripnumber, base_dir):
         if event.pulses:
             for i, pulse in enumerate(event.pulses):
-                if pulse[0].height is not None:
-                    lheights.append(pulse[0].height)
-                    rheights.append(pulse[1].height)
-                    try:
-                        offsets.append(event.offsets[i])
-                        #print("Offset: ", event.offsets[i])
-                    except IndexError:
-                        pdb.set_trace()
+                lheights.append(pulse.left.height)
+                rheights.append(pulse.right.height)
+                try:
+                    offsets.append(pulse.cfd_offset)
+                    # print("Offset: ", event.offsets[i])
+                except IndexError:
+                    pdb.set_trace()
     lefthist = root.TH1D("left", "left", 30, 0, 50)
     for value in lheights:
         try:
             lefthist.Fill(-value)
         except TypeError:
-            pdb.set_trace()
+            if value is not None:
+                pdb.set_trace()
     lefthist.Draw()
     pdb.set_trace()
     righthist = root.TH1D("right", "right", 30, 0, 50)
@@ -284,6 +455,7 @@ if __name__ == "__main__":
         try:
             offsethist.Fill(value)
         except TypeError:
-            pdb.set_trace()
+            # pdb.set_trace()
+            pass
     offsethist.Draw()
     pdb.set_trace()
