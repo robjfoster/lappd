@@ -220,10 +220,9 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
         return False
 
 
-def cfd(wave, fraction, peak_sample=None, plot=False, samplesabovethresh=5):
-    peak_sample = np.argmin(wave) if not peak_sample else peak_sample
-    print(peak_sample)
-    pdb.set_trace()
+def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethresh=1):
+    peak_sample = np.argmin(wave) if not userpeak else userpeak
+    # print(peak_sample)
     peak_value = wave[peak_sample]
     threshold = peak_value * fraction
     beforepeak = wave[:peak_sample]
@@ -231,16 +230,22 @@ def cfd(wave, fraction, peak_sample=None, plot=False, samplesabovethresh=5):
     for i, sample in enumerate(beforepeak[::-1]):
         if sample > threshold:
             if np.all(beforepeak[i:i+samplesabovethresh] > threshold):
-                thresh_sample = ((peak_sample - i) +
-                                 (peak_sample - (i+1))) / 2.0
+                thresh_sample = peak_sample - i
+                # thresh_sample = ((peak_sample - i) +
+                #                  (peak_sample - (i+1))) / 2.0
                 break
+    if thresh_sample is None:
+        return None
     if plot and thresh_sample:
         plt.plot(wave, "x")
         plt.axvline(thresh_sample, c="g")
         plt.axvline(peak_sample, c="purple")
         plt.axhline(threshold, c="r")
         plt.show()
-    return thresh_sample
+    if times is None:
+        return thresh_sample
+    else:
+        return (times[thresh_sample] + times[thresh_sample + 1]) / 2.0
 
 
 def minmax(wave: np.ndarray, max_minus_min: float, condition: str = "greater") -> bool:
