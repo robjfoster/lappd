@@ -244,7 +244,8 @@ namespace CAENReader
     {
         removeLastNSamples(wave.wave, 10);
         removeLastNSamples(wave.times, 10);
-        auto baseline = calculateBaseline(wave.wave);
+        // auto baseline = calculateBaseline(wave.wave);
+        auto baseline = median(wave.wave);
         subtractBaseline(wave.wave, baseline);
         convertADCWave(wave.wave, 12);
     }
@@ -404,7 +405,7 @@ namespace CAENReader
                 float pw = pulseWidth(wave, index, 0.25);
                 if (pw > 1.0 && pw < width)
                 {
-                    std::cout << "Peak found at: " << index << " with pulse width: " << pw << std::endl;
+                    // std::cout << "Peak found at: " << index << " with pulse width: " << pw << std::endl;
                     peaks.push_back(index);
                 }
             }
@@ -548,9 +549,12 @@ namespace CAENReader
         return abs(total);
     }
 
-    float integratedCharge(std::vector<float> wave, float terminationOhms = 50.0)
+    float integratedCharge(std::vector<float> wave, float terminationOhms = 50.0, float gain = pow(10.0, 6))
     {
         float charge = integrate(wave) * NS_PER_SAMPLE / terminationOhms;
+        // mv -> V, ns -> s, account for gain -> in terms of PE
+        // charge = charge / 1000.0 / pow(1.0, 9) / gain / pow(1.6, -19);
+        // Result is in mV*ns
         return charge;
     }
 
