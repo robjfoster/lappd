@@ -5,6 +5,7 @@ from scipy import signal
 
 from .utils import sigutils as su
 from .utils.lappdcfg import config as lcfg
+from .utils.lognormal import lnfit
 
 peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
@@ -64,6 +65,9 @@ class Pulse():
             #    breakpoint()
             return None
         return peaks[0]
+
+    def fit(self):
+        lnfit(self)
 
     def plot(self) -> None:
         plt.plot(self.smoothedtimes, self.smoothedwave)

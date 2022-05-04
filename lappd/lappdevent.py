@@ -196,7 +196,7 @@ class LAPPDEvent():
         samples = [i for i in range(1014)]
         times = [i*NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
-        #z = get_sample(x, y)
+        # z = get_sample(x, y)
         fig = plt.figure()
         ax = plt.axes(projection='3d')
         ax.view_init(elev=25.0, azim=-135)
@@ -230,8 +230,8 @@ class LAPPDEvent():
         samples = [i for i in range(1014)]
         times = [i*NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
-        #z = get_sample(x, y)
-        #fig = plt.figure()
+        # z = get_sample(x, y)
+        # fig = plt.figure()
         ax = plt.axes(projection='3d')
         ax.view_init(elev=25.0, azim=-135)
         ax.set_xlabel("Time (ns)")
@@ -395,7 +395,8 @@ if __name__ == "__main__":
     offsets = []
     cfpeaks = []
     for levent in LAPPDEvent.search_all(base_dir):
-        print(f"Found {levent.event_no}")
+        if levent.event_no % 100 == 0:
+            print(f"Analysing {levent.event_no}")
         levent.plot_both()
         breakpoint()
     for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
