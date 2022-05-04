@@ -6,7 +6,6 @@ from itertools import combinations
 
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy import lookfor
 import ROOT as root
 from scipy import interpolate, signal
 from scipy.optimize import curve_fit
@@ -237,7 +236,7 @@ def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethres
     if thresh_sample is None:
         return None
     if plot and thresh_sample:
-        plt.plot(wave, "x")
+        plt.plot(wave, "o", linestyle="-", markersize=1)
         plt.axvline(thresh_sample, c="g")
         plt.axvline(peak_sample, c="purple")
         plt.axhline(threshold, c="r")

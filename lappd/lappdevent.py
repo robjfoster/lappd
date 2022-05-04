@@ -1,24 +1,31 @@
+from email.mime import base
 import sys
 from abc import ABC
+import os
+from typing import Dict, Generator, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
 from mpl_toolkits import mplot3d
+from tqdm import tqdm
 
-import utils.gimmedatwave as gdw
-from strip import StripEvent, StripPulse
-from utils.cxxbindings import caenreader
-from utils.lappdcfg import config as lcfg
+from .utils import gimmedatwave as gdw
+from .strip import StripEvent, StripPulse
+from .utils.cxxbindings import caenreader
+from .utils.lappdcfg import allstrips
+from .utils.lappdcfg import config as lcfg
 
 # root.gSystem.Load(os.path.dirname(os.path.realpath(__file__))
 #                  + "/utils/caenreader_cpp.so")
-#caenreader = root.CAENReader
+# caenreader = root.CAENReader
 
 peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
 
 NS_PER_SAMPLE = daqconfig.getfloat("nspersample")
+NSAMPLES = daqconfig.getint("nsamples")
+NREMOVEDSAMPLES = 10
 MINHEIGHT = peakparams.getfloat("minheight")  # mV
 MINDISTANCE = peakparams.getfloat("mindistance")
 RELHEIGHT = peakparams.getfloat("relheight")
@@ -53,12 +60,14 @@ class LAPPDEvent():
 
     # Hold raw events for all strips
 
-    def __init__(self, stripevents, event_no=None) -> None:
+    def __init__(self, stripevents: Dict[int, StripEvent], event_no: int = None) -> None:
         self.stripevents = stripevents
         self.event_no = event_no
+        self.leftmatrix, self.rightmatrix = self._build_matrix()
+        self.rootfile = None
 
     @classmethod
-    def build(cls, stripfiles, event_no):
+    def build(cls, stripfiles: Dict[int, Tuple[str, str]], event_no: int) -> "LAPPDEvent":
         stripevents = {}
         for strip in stripfiles:
             leftfile = stripfiles[strip][0]
@@ -68,21 +77,34 @@ class LAPPDEvent():
         return cls(stripevents, event_no=event_no)
 
     @classmethod
-    def search_strip(cls, stripnumber, dir):
+    def search_strip(cls, stripnumber: int, dir: str
+                     ) -> Generator[Tuple["LAPPDEvent", "LAPPDPulse"], None, None]:
         stripfiles = cls.get_stripfiles(dir)
-        for stripevent in StripEvent.itr_file(stripnumber, base_dir):
+        for stripevent in StripEvent.itr_file(stripnumber, dir):
             if stripevent.pulses:
                 event_no = stripevent.rawleftwaveform.eventNo
-                levent = LAPPDEvent.build(stripfiles, event_no)
+                levent = cls.build(stripfiles, event_no)
                 lpulses = []
                 for pulse in stripevent.pulses:
-                    # breakpoint()
                     lpulses.append(LAPPDPulse(
                         levent, pulse.slice_point, event_no=event_no))
                 yield levent, lpulses
 
+    @classmethod
+    def search_all(cls, dir: str):
+        stripfiles = cls.get_stripfiles(dir)
+        n_entries = caenreader.getNumberEntries(
+            list(stripfiles.values())[0][0])
+        print(f"Found {n_entries} events in this directory.")
+        for event_no in range(n_entries):
+            levent = cls.build(stripfiles, event_no)
+            for stripevent in levent.stripevents.values():
+                if stripevent.passed:
+                    yield levent
+                    break
+
     @staticmethod
-    def get_stripfiles(dir):
+    def get_stripfiles(dir: str) -> Dict[int, Tuple[str, str]]:
         stripfiles = {}
         for stripnumber in range(14, -15, -1):
             if stripnumber == 0:
@@ -107,7 +129,7 @@ class LAPPDEvent():
         return stripfiles
 
     @classmethod
-    def itr_num(cls, dir, n_events=1):
+    def itr_num(cls, dir: str, n_events: int = 1) -> Generator["LAPPDEvent", None, None]:
         stripfiles = {}
         for stripnumber in range(14, -15, -1):
             if stripnumber == 0:
@@ -139,26 +161,121 @@ class LAPPDEvent():
         #         if strip == stripnumber:
         pass
 
-    def plot_samples(self):
-        @np.vectorize
-        def get_sample(strip, sample):
-            return self.stripevents[strip].leftwaveform[sample] * -1
+    def _build_matrix(self):
+        nsamples = (NSAMPLES - NREMOVEDSAMPLES)
+        leftmatrix = np.zeros((28, nsamples))
+        rightmatrix = np.zeros((28, nsamples))
+        for i, strip in enumerate(allstrips):
+            try:
+                stripevent = self.stripevents[strip]
+                leftvalues = stripevent.leftwaveform
+                rightvalues = stripevent.rightwaveform
+            except KeyError:
+                leftvalues = [0 for i in range(nsamples)]
+                rightvalues = [0 for i in range(nsamples)]
+                pass
+            try:
+                leftmatrix[i, :] = leftvalues
+                rightmatrix[i, :] = rightvalues
+            except:
+                breakpoint()
+        return leftmatrix, rightmatrix
+
+    def plot_side(self, side, show=True) -> None:
+        # Voltage is inverted!
+        if side == "right":
+            @ np.vectorize
+            def get_sample(strip, sample):
+                return self.stripevents[strip].rightwaveform[sample] * -1
+        elif side == "left":
+            @ np.vectorize
+            def get_sample(strip, sample):
+                return self.stripevents[strip].leftwaveform[sample] * -1
+        else:
+            print("Did not recognise side.")
+            return
         strips = [strip for strip in self.stripevents.keys()]
         samples = [i for i in range(1014)]
         times = [i*NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
-        z = get_sample(x, y)
+        #z = get_sample(x, y)
         fig = plt.figure()
         ax = plt.axes(projection='3d')
         ax.view_init(elev=25.0, azim=-135)
         ax.set_xlabel("Time (ns)")
         ax.set_ylabel("Stripnumber")
         ax.set_zlabel("Amplitude (mV)")
-        #ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
+        # ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
         for strip in strips:
             ax.plot3D(times, [strip for i in range(1014)],
                       get_sample(strip, [i for i in range(1014)]), linestyle="-", marker="o", markersize=1, linewidth=1)
+        plt.title(f"{side} side. Event {self.event_no}")
+        if show:
+            plt.show()
+
+    def plot_both(self) -> None:
+        # Voltage is inverted!
+        self.plot_side("left", show=False)
+        self.plot_side("right", show=False)
         plt.show()
+
+    def plot_average(self):
+        # Voltage is inverted!
+        @ np.vectorize
+        def get_right(strip, sample):
+            return self.stripevents[strip].rightwaveform[sample] * -1
+
+        @ np.vectorize
+        def get_left(strip, sample):
+            return self.stripevents[strip].leftwaveform[sample] * -1
+        strips = [strip for strip in self.stripevents.keys()]
+        samples = [i for i in range(1014)]
+        times = [i*NS_PER_SAMPLE for i in samples]
+        x, y = np.meshgrid(strips, samples)
+        #z = get_sample(x, y)
+        #fig = plt.figure()
+        ax = plt.axes(projection='3d')
+        ax.view_init(elev=25.0, azim=-135)
+        ax.set_xlabel("Time (ns)")
+        ax.set_ylabel("Stripnumber")
+        ax.set_zlabel("Amplitude (mV)")
+        # ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
+        for strip in strips:
+            ax.plot3D(times, [strip for i in range(1014)],
+                      (get_left(strip, [i for i in range(1014)]) +
+                       get_right(strip, [i for i in range(1014)])) / 2.0,
+                      linestyle="-", marker="o", markersize=1, linewidth=1)
+        plt.title(f"LR averaged. Event {self.event_no}")
+        plt.show()
+
+    def set_rootfile(self, rootfile):
+        self.rootfile = rootfile
+
+    def write_root(self):
+        breakpoint()
+        if self.rootfile is None:
+            print("Root file not set, returning")
+            return
+        if os.path.exists(self.rootfile):
+            print("File exists")
+            f = root.TFile(self.rootfile, "UPDATE")
+        else:
+            print("Creating new file")
+            f = root.TFile(self.rootfile, "CREATE")
+        if not f.GetListOfKeys().Contains("lappd"):
+            print("Creating new tree")
+            tree = root.TTree("lappd", "LAPPD Event Data")
+            tree.Branch("offset", self.stripevents[13].rawleftwaveform.wave)
+            tree.Fill()
+        else:
+            print("Tree exists")
+            tree = f.Get("lappd")
+            tree.SetBranchAddress(
+                "offset", self.stripevents[13].rawleftwaveform.wave)
+            tree.Fill()
+        tree.Write()
+        f.Close()
+
 
 # /////////////////////////////////////////////////////////////////////////////
 
@@ -173,9 +290,10 @@ class LAPPDPulse():
         self.strippulses = {}
         for strip in self.lappdevent.stripevents:
             self._add_pulse(strip, slice_point)
+        self.leftmatrix, self.rightmatrix = self._build_matrix()
 
-    @classmethod
-    def search(cls, lappdevent: LAPPDEvent, strip=13):
+    @ classmethod
+    def search(cls, lappdevent: LAPPDEvent, strip: int = 13):
         # Build the whole LAPPDPulse, depending on the search.
         # search = stripnumber or "all" etc
         # Needs to return multiple LAPPDPulses if necessary
@@ -196,33 +314,47 @@ class LAPPDPulse():
                                 slice_point=slice_point, event_no=self.event_no)
         self.strippulses[strip] = strippulse
 
-    def centroid(self):
+    def _build_matrix(self):
+        lefts = [sp.left.wave for sp in self.strippulses.values()]
+        rights = [sp.right.wave for sp in self.strippulses.values()]
+        leftmatrix = np.vstack(lefts)
+        rightmatrix = np.vstack(rights)
+        return leftmatrix, rightmatrix
+
+    def centroid_height(self, plot=False):
         leftvals = []
         rightvals = []
+        for strip in self.strippulses.keys():
+            strippulse = self.strippulses[strip]
+            leftvals.append(strippulse.left.height)
+            rightvals.append(strippulse.right.height)
+        leftcent = sum(leftvals) / len(leftvals)
+        rightcent = sum(rightvals) / len(rightvals)
+        if plot:
+            plt.plot(self.strippulses.keys(), leftvals)
+            plt.plot(self.strippulses.keys(), rightvals)
+            plt.show()
+        return leftcent, rightcent
+
+    def centroid_integral(self, plot=False):
         leftints = []
         rightints = []
         for strip in self.strippulses.keys():
             strippulse = self.strippulses[strip]
-            # leftvals.append(
-            #    strippulse.left.smoothedwave[strippulse.left.interppeak] * -1.0)
-            # rightvals.append(
-            #    strippulse.right.smoothedwave[strippulse.right.interppeak] * -1.0)
-            leftvals.append(strippulse.left.height)
-            rightvals.append(strippulse.right.height)
             leftints.append(caenreader.integratedCharge(
                 strippulse.left.rawpulse.wave))
             rightints.append(caenreader.integratedCharge(
                 strippulse.right.rawpulse.wave))
-        # breakpoint()
-        #plt.plot(self.strippulses.keys(), leftvals)
-        #plt.plot(self.strippulses.keys(), rightvals)
-        # plt.show()
-        #plt.plot(self.strippulses.keys(), leftints)
-        #plt.plot(self.strippulses.keys(), rightints)
-        # plt.show()
+        leftcent = sum(leftints) / len(leftints)
+        rightcent = sum(rightints) / len(rightints)
+        if plot:
+            plt.plot(self.strippulses.keys(), leftints)
+            plt.plot(self.strippulses.keys(), rightints)
+            plt.show()
+        return leftcent, rightcent
 
-    def plot(self):
-        @np.vectorize
+    def plot(self) -> None:
+        @ np.vectorize
         def get_sample(strip, sample):
             return self.strippulses[strip].left.smoothedwave[sample] * -1
         strips = [strip for strip in self.strippulses.keys()]
@@ -237,7 +369,7 @@ class LAPPDPulse():
         ax.set_xlabel("Time (ns)")
         ax.set_ylabel("Stripnumber")
         ax.set_zlabel("Amplitude (mV)")
-        #ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
+        # ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
         for strip in strips:
             ax.plot3D(times, [strip for i in range(len(samples))],
                       get_sample(strip, [i for i in range(len(samples))]),
@@ -263,5 +395,22 @@ if __name__ == "__main__":
     lheights = []
     rheights = []
     offsets = []
+    cfpeaks = []
+    for levent in LAPPDEvent.search_all(base_dir):
+        print(f"Found {levent.event_no}")
+        levent.plot_both()
+        breakpoint()
     for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
-        lpulses[0].centroid()
+        # psf = lpulses[0].leftmatrix[0:3, :]
+        # levent.set_rootfile("testfile.root")
+        # levent.write_root()
+        lpulses[0].centroid_integral()
+        for npulse in lpulses[0].strippulses:
+            pulse = lpulses[0].strippulses[npulse].left
+            if pulse.peak_present:
+                cfpeaks.append(abs(pulse.cfpeak - pulse.peaktime))
+    myhist = root.TH1D("hist", "hist", 35, 0.5, 1.6)
+    for value in cfpeaks:
+        myhist.Fill(value)
+    myhist.Draw()
+    breakpoint()

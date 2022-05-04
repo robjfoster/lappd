@@ -1,9 +1,10 @@
+from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
-import utils.sigutils as su
-from utils.lappdcfg import config as lcfg
+from .utils import sigutils as su
+from .utils.lappdcfg import config as lcfg
 
 peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
@@ -37,17 +38,20 @@ class Pulse():
             self.height = self.smoothedwave[self.peak]
             self.cfpeak = su.cfd(self.smoothedwave, 0.2,
                                  times=self.smoothedtimes, userpeak=self.peak)
+            if self.cfpeak is None:
+                self.peak_present = False
         else:
             self.peak_present = False
             self.peaktime = None
             self.height = self.smoothedwave[self.rawinterppeak]
             self.cfpeak = None
 
-    def _interpolate(self, interpfactor=INTERPFACTOR):
+    def _interpolate(self, interpfactor: int = INTERPFACTOR
+                     ) -> Tuple[np.ndarray, np.ndarray]:
         x, y = su.cubic_spline(self.times, self.wave, interpfactor)
         return x, y
 
-    def _getpeak(self):
+    def _getpeak(self) -> int:
         peaks, peakinfo = signal.find_peaks(
             self.smoothedwave*-1,
             height=MINHEIGHT,
@@ -56,12 +60,12 @@ class Pulse():
         # TODO: Handle finding multiple peaks in a pulse
         if len(peaks) != 1:
             # self.plot()
-            if len(peaks) > 1:
-                breakpoint()
+            # if len(peaks) > 1:
+            #    breakpoint()
             return None
         return peaks[0]
 
-    def plot(self):
+    def plot(self) -> None:
         plt.plot(self.smoothedtimes, self.smoothedwave)
         plt.plot(self.times, self.wave, "x")
         plt.plot(self.times[self.rawpeak],

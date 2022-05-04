@@ -1,19 +1,21 @@
 import pdb
 import sys
-from typing import Generator
+from typing import Generator, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-import utils.gimmedatwave as gdw
-from pulse import Pulse
-from utils.cxxbindings import caenreader
-from utils.lappdcfg import config as lcfg
+from .utils import gimmedatwave as gdw
+from .pulse import Pulse
+from .utils.cxxbindings import caenreader
+from .utils.lappdcfg import config as lcfg
 
 peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
 
 NS_PER_SAMPLE = daqconfig.getfloat("nspersample")
+NSAMPLES = daqconfig.getint("nsamples")
+NREMOVEDSAMPLES = 10
 MINHEIGHT = peakparams.getfloat("minheight")  # mV
 MINDISTANCE = peakparams.getfloat("mindistance")
 RELHEIGHT = peakparams.getfloat("relheight")
@@ -69,7 +71,13 @@ class StripPulse():
 
 class StripEvent():
 
-    def __init__(self, leftwaveform, rightwaveform, event_no=None, cfg=None, peaks=None) -> None:
+    def __init__(self,
+                 leftwaveform,
+                 rightwaveform,
+                 event_no: int = None,
+                 cfg=None,
+                 peaks: List[int] = None
+                 ) -> None:
 
         # Raw Event information for each strip
 
@@ -80,6 +88,8 @@ class StripEvent():
         self.event_no = event_no
         self.cfg = cfg  # Or just use global?
         # The peaks for each PAIR of Pulses
+        # self.times = [
+        #    i * NS_PER_SAMPLE for i in range(NSAMPLES-NREMOVEDSAMPLES)]
         self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
         self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
         if peaks is None:
@@ -131,7 +141,7 @@ class StripEvent():
         for entry in range(leftentries):
             yield cls.build(leftfile, rightfile, entry)
 
-    def _find_peaks_custom(self):
+    def _find_peaks_custom(self) -> Tuple[np.ndarray, np.ndarray]:
         # print("Finding left peaks")
         leftpeaks = caenreader.findPeaks(
             self.rawleftwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
@@ -140,7 +150,7 @@ class StripEvent():
             self.rawrightwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
         return np.asarray(leftpeaks), np.asarray(rightpeaks)
 
-    def _find_peak_heights(self):
+    def _find_peak_heights(self) -> Tuple[np.ndarray, np.ndarray]:
         leftpeak_heights = self.leftwaveform[self.leftpeaks]
         rightpeak_heights = self.rightwaveform[self.rightpeaks]
         return leftpeak_heights, rightpeak_heights
@@ -176,10 +186,11 @@ class StripEvent():
             self.pulses.append(pulsepair)
 
     def coarse_correlate(self,
-                         max_offset,
-                         minrelpulseheight=MINRELPULSEHEIGHT,
-                         maxrelpulseheight=MAXRELPULSEHEIGHT,
-                         ns_per_sample=NS_PER_SAMPLE):
+                         max_offset: float,
+                         minrelpulseheight: float = MINRELPULSEHEIGHT,
+                         maxrelpulseheight: float = MAXRELPULSEHEIGHT,
+                         ns_per_sample: float = NS_PER_SAMPLE
+                         ) -> Tuple[List[Tuple[int, int]], List[int]]:
         # An attempt at correlating peaks on two waveform produced from either side of a stripline
         # Looks for pulses within max_offset (ns) and chooses the one with the largest pulse height
         peak_pairs = []
@@ -215,12 +226,12 @@ class StripEvent():
         # save the relative heights as well
         return peak_pairs, offsets
 
-    def plot_raw(self):
+    def plot_raw(self) -> None:
         plt.plot(self.rawleftwaveform.times, self.rawleftwaveform.wave)
         plt.plot(self.rawrightwaveform.times, self.rawrightwaveform.wave)
         plt.show()
 
-    def plot_peak(self, peak, smoothed=True):
+    def plot_peak(self, peak, smoothed=True) -> None:
         if smoothed:
             plt.plot(self.pulses[peak][0].smoothedtimes,
                      self.pulses[peak][0].smoothedwave)
