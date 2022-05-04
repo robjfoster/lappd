@@ -1,4 +1,3 @@
-from email.mime import base
 import sys
 from abc import ABC
 import os
@@ -8,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
 from mpl_toolkits import mplot3d
-from tqdm import tqdm
 
 from .utils import gimmedatwave as gdw
 from .strip import StripEvent, StripPulse
