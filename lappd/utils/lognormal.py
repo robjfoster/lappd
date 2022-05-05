@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+import ROOT as root
 
 
 def lognormal(t, B, Q, t0, m, sigma):
@@ -15,20 +16,75 @@ def lognormal3(t, Q, t0, tau, sigma):
     return - (Q / ((t + t0) * np.sqrt(2 * np.pi * sigma**2))) * np.exp(-(np.log((t + t0) / tau))**2 / (2 * sigma**2))
 
 
-def lnfit(lpulse, debug=False):
+def lognormal4(t, Q, tau, sigma):
+    return - (Q / ((t) * np.sqrt(2 * np.pi * sigma**2))) * np.exp(-(np.log((t) / tau))**2 / (2 * sigma**2))
+
+
+class LogNormal:
+
+    def __call__(self, arr, par):
+        return par[3] - (par[0] / ((arr[0]) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr[0]) / par[1]))**2 / (2 * par[2]**2))
+
+
+def root_ln(x, y):
+    maxtime = np.max(x)
+    mintime = np.min(x)
+    #c1 = root.TCanvas("c1", "Simple graph example", 200, 10, 700, 500)
+    gr = root.TGraph(len(x), x.astype(
+        "float64"), y.astype("float64"))
+    lognormal = LogNormal()
+    tf1 = root.TF1("pyln", lognormal, mintime, maxtime, 4)
+    tf1.SetParLimits(0, 0, 200)
+    tf1.SetParLimits(1, mintime, maxtime)
+    tf1.SetParLimits(2, 0.0, 3)
+    tf1.SetParLimits(3, -5, 5)
+    tf1.SetParNames("Q", "Centre", "Sigma", "Baseline")
+    tf1.SetParameters(25, (maxtime + mintime) / 2, 0.05, 0)
+    gr.Fit("pyln", "Q")
+    # gr.Draw("AP")
+    # gr.SetMarkerSize(0.5)
+    # gr.SetMarkerStyle(20)
+    # c1.Update()
+    breakpoint()
+
+
+def lnfit(lpulse, upsample_rate=10, debug=True):
     times = lpulse.times
+    new_times = np.arange(np.min(times), np.max(times),
+                          (times[1] - times[0]) / 10)
     data = lpulse.wave
-    bounds = ((0, min(times), 0, 0), (200, max(times), 200, 3))
+    bounds = ((0, np.min(times), 0, 0), (200, np.max(times), 200, 3))
     p0 = (10, times[int(len(times) / 2)], 10, 0.8)
     popt, pcov = curve_fit(lognormal3, times, data, p0=p0, bounds=bounds)
     plt.plot(times, data, "x")
-    plt.plot(times, lognormal3(times, *popt))
+    plt.plot(new_times, lognormal3(new_times, *popt))
     if debug:
         print(
             f"Q: {popt[0]}, t0: {popt[1]}, tau: {popt[2]}, sigma: {popt[3]}, ")
         print(f"Integrated: {np.trapz(data, x=times)}")
         print(f"Centre: {popt[2] - popt[1]}")
     plt.show()
+    breakpoint()
+    return
+
+
+def lnfit4(lpulse, upsample_rate=10, debug=True):
+    times = lpulse.times
+    new_times = np.arange(np.min(times), np.max(times),
+                          (times[1] - times[0]) / 10)
+    data = lpulse.wave
+    bounds = ((0, np.min(times), 0), (200, np.max(times), 3))
+    p0 = (10, times[int(len(times) / 2)], 0.8)
+    popt, pcov = curve_fit(lognormal4, times, data, p0=p0, bounds=bounds)
+    # plt.plot(times, data, "x")
+    # plt.plot(new_times, lognormal4(new_times, *popt))
+    # if debug:
+    #     print(
+    #         f"Q: {popt[0]}, tau: {popt[1]}, sigma: {popt[2]}, ")
+    #     print(f"Integrated: {np.trapz(data, x=times)}")
+    #     print(f"Centre: {popt[2] - popt[1]}")
+    # plt.show()
+    root_ln(times, data)
     return
 
 

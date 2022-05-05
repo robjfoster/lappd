@@ -1,3 +1,4 @@
+from logging import root
 from typing import Tuple
 import matplotlib.pyplot as plt
 import numpy as np
@@ -5,7 +6,7 @@ from scipy import signal
 
 from .utils import sigutils as su
 from .utils.lappdcfg import config as lcfg
-from .utils.lognormal import lnfit
+from .utils.lognormal import root_ln
 
 peakparams = lcfg['PEAKPARAMS']
 daqconfig = lcfg['DAQCONFIG']
@@ -67,7 +68,7 @@ class Pulse():
         return peaks[0]
 
     def fit(self):
-        lnfit(self)
+        root_ln(self.times, self.wave)
 
     def plot(self) -> None:
         plt.plot(self.smoothedtimes, self.smoothedwave)

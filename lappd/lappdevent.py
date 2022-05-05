@@ -101,6 +101,16 @@ class LAPPDEvent():
                     yield levent
                     break
 
+    @classmethod
+    def itr_all(cls, dir: str):
+        stripfiles = cls.get_stripfiles(dir)
+        n_entries = caenreader.getNumberEntries(
+            list(stripfiles.values())[0][0])
+        print(f"Found {n_entries} events in this directory.")
+        for event_no in range(n_entries):
+            levent = cls.build(stripfiles, event_no)
+            yield levent
+
     @staticmethod
     def get_stripfiles(dir: str) -> Dict[int, Tuple[str, str]]:
         stripfiles = {}

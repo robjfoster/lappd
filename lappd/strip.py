@@ -83,8 +83,10 @@ class StripEvent():
 
         self.rawleftwaveform = leftwaveform
         self.leftwaveform = np.asarray(leftwaveform.wave)
+        self.lefttimes = np.asarray(self.rawleftwaveform.times)
         self.rawrightwaveform = rightwaveform
         self.rightwaveform = np.asarray(rightwaveform.wave)
+        self.righttimes = np.asarray(self.rawrightwaveform.times)
         self.event_no = event_no
         self.cfg = cfg  # Or just use global?
         # The peaks for each PAIR of Pulses
