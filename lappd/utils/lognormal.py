@@ -26,6 +26,15 @@ class LogNormal:
         return par[3] - (par[0] / ((arr[0]) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr[0]) / par[1]))**2 / (2 * par[2]**2))
 
 
+def double_gauss():
+    fit = root.TF1("doublegauss", "gaus(0) + gaus(3)")
+    fit.SetParNames("Constant1", "Mean1", "Sigma1",
+                    "Constant2", "Mean2", "Sigma2")
+    fit.SetParLimits(1, -5, 1)
+    fit.SetParLimits(4, 0, 5)
+    return fit
+
+
 def root_ln(x, y):
     maxtime = np.max(x)
     mintime = np.min(x)
