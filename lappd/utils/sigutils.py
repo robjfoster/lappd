@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
 from scipy import interpolate, signal
-from scipy.optimize import curve_fit
 from scipy.stats import moyal
 
 from . import gimmedatwave as gdw
@@ -236,10 +235,12 @@ def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethres
     if thresh_sample is None:
         return None
     if plot and thresh_sample:
-        plt.plot(wave, "o", linestyle="-", markersize=1)
+        plt.plot(wave, "x", linestyle="-", markersize=1)
         plt.axvline(thresh_sample, c="g")
         plt.axvline(peak_sample, c="purple")
         plt.axhline(threshold, c="r")
+        plt.xlabel("Sample number")
+        plt.ylabel("Amplitude (mV)")
         plt.show()
     if times is None:
         return thresh_sample

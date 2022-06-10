@@ -1,6 +1,6 @@
+import os
 import sys
 from abc import ABC
-import os
 from typing import Dict, Generator, Tuple
 
 import matplotlib.pyplot as plt
@@ -8,31 +8,14 @@ import numpy as np
 import ROOT as root
 from mpl_toolkits import mplot3d
 
-from .utils import gimmedatwave as gdw
+from .matching import match_peaks
 from .strip import StripEvent, StripPulse
+from .utils import gimmedatwave as gdw
+from .utils import lappdcfg as cfg
 from .utils.cxxbindings import caenreader
+from .utils.interpolation import interp_matrix
 from .utils.lappdcfg import allstrips
-from .utils.lappdcfg import config as lcfg
-
-# root.gSystem.Load(os.path.dirname(os.path.realpath(__file__))
-#                  + "/utils/caenreader_cpp.so")
-# caenreader = root.CAENReader
-
-peakparams = lcfg['PEAKPARAMS']
-daqconfig = lcfg['DAQCONFIG']
-
-NS_PER_SAMPLE = daqconfig.getfloat("nspersample")
-NSAMPLES = daqconfig.getint("nsamples")
-NREMOVEDSAMPLES = 10
-MINHEIGHT = peakparams.getfloat("minheight")  # mV
-MINDISTANCE = peakparams.getfloat("mindistance")
-RELHEIGHT = peakparams.getfloat("relheight")
-MINRELPULSEHEIGHT = peakparams.getfloat("minrelpulseheight")
-MAXRELPULSEHEIGHT = peakparams.getfloat("maxrelpulseheight")
-MAXOFFSET = peakparams.getfloat("maxoffset")
-INTERPFACTOR = peakparams.getint("interpfactor")
-LOOKBACK = peakparams.getfloat("slicelookback")
-LOOKFORWARD = peakparams.getfloat("slicelookforward")
+from .utils.wiener import do_wiener
 
 
 class BaseEvent(ABC):
@@ -63,6 +46,11 @@ class LAPPDEvent():
         self.event_no = event_no
         self.leftmatrix, self.rightmatrix = self._build_matrix()
         self.rootfile = None
+        # Available after running reconstruct()
+        self.deconvolved = None
+        self.interped = None
+        self.peaks = None
+        self.pairs = None
 
     @classmethod
     def build(cls, stripfiles: Dict[int, Tuple[str, str]], event_no: int) -> "LAPPDEvent":
@@ -118,8 +106,8 @@ class LAPPDEvent():
             if stripnumber == 0:
                 continue
             print(f"Looking for strip {stripnumber}")
-            leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
-            rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
+            leftchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"L"]
+            rightchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"R"]
             try:
                 leftfile = gdw.get_filename(leftchannel, base=dir)
                 rightfile = gdw.get_filename(rightchannel, base=dir)
@@ -143,8 +131,8 @@ class LAPPDEvent():
             if stripnumber == 0:
                 continue
             print(f"Looking for strip {stripnumber}")
-            leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
-            rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
+            leftchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"L"]
+            rightchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"R"]
             try:
                 leftfile = gdw.get_filename(leftchannel, base=dir)
                 rightfile = gdw.get_filename(rightchannel, base=dir)
@@ -169,8 +157,18 @@ class LAPPDEvent():
         #         if strip == stripnumber:
         pass
 
+    def find_lappd_pulses(self, time_delta):
+        pulse_centres = []
+        pulse_positions = []
+        for sevent in self.stripevents.values():
+            for spulse in sevent.pulses:
+                pulse_centres.append(spulse.slice_point)
+                pulse_positions.append(spulse.get_transverse_position())
+        time_centres = [i * cfg.NS_PER_SAMPLE for i in pulse_centres]
+        breakpoint()
+
     def _build_matrix(self):
-        nsamples = (NSAMPLES - NREMOVEDSAMPLES)
+        nsamples = (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES)
         leftmatrix = np.zeros((28, nsamples))
         rightmatrix = np.zeros((28, nsamples))
         for i, strip in enumerate(allstrips):
@@ -187,7 +185,25 @@ class LAPPDEvent():
                 rightmatrix[i, :] = rightvalues
             except:
                 breakpoint()
-        return leftmatrix, rightmatrix
+        return leftmatrix * -1, rightmatrix * -1
+
+    def reconstruct(self):
+        left_deconvolved = do_wiener(self.leftmatrix, template=cfg.TEMPLATE)
+        right_deconvolved = do_wiener(self.rightmatrix, template=cfg.TEMPLATE)
+        # Change this to dynamically calculate the number of strips to show
+        left_interp = interp_matrix(left_deconvolved, startx=0, stopx=cfg.NSAMPLES -
+                                    cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=10)
+        right_interp = interp_matrix(right_deconvolved, startx=0, stopx=cfg.NSAMPLES -
+                                     cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=10)
+        # Change this to also account for minimum distance
+        leftpeaks = detect_peaks(left_interp, threshold=cfg.MINHEIGHT)
+        rightpeaks = detect_peaks(right_interp, threshold=cfg.MINHEIGHT)
+        # Change this to allow for min likelihood (add to config)
+        pairs = match_peaks(leftpeaks, rightpeaks)
+        self.deconvolved = (left_deconvolved, right_deconvolved)
+        self.interped = (left_interp, right_interp)
+        self.peaks = (leftpeaks, rightpeaks)
+        self.pairs = pairs
 
     def plot_side(self, side, show=True) -> None:
         # Voltage is inverted!
@@ -204,7 +220,7 @@ class LAPPDEvent():
             return
         strips = [strip for strip in self.stripevents.keys()]
         samples = [i for i in range(1014)]
-        times = [i*NS_PER_SAMPLE for i in samples]
+        times = [i*cfg.NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
         # z = get_sample(x, y)
         fig = plt.figure()
@@ -238,7 +254,7 @@ class LAPPDEvent():
             return self.stripevents[strip].leftwaveform[sample] * -1
         strips = [strip for strip in self.stripevents.keys()]
         samples = [i for i in range(1014)]
-        times = [i*NS_PER_SAMPLE for i in samples]
+        times = [i*cfg.NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
         # z = get_sample(x, y)
         # fig = plt.figure()
@@ -260,6 +276,7 @@ class LAPPDEvent():
         self.rootfile = rootfile
 
     def write_root(self):
+        """Not working"""
         breakpoint()
         if self.rootfile is None:
             print("Root file not set, returning")
@@ -291,13 +308,22 @@ class LAPPDEvent():
 class LAPPDPulse():
     """A container for multiple StripPulses corresponding to an entire LAPPD pulse"""
 
-    def __init__(self, lappdevent: LAPPDEvent, slice_point: int, event_no: int = None) -> None:
+    def __init__(self,
+                 lappdevent: LAPPDEvent,
+                 slice_point: int,
+                 event_no: int = None,
+                 lookback: float = cfg.LOOKBACK,
+                 lookforward: float = cfg.LOOKFORWARD
+                 ) -> None:
         self.lappdevent = lappdevent
         self.slice_point = slice_point
         self.event_no = event_no
+        self.lookback = lookback
+        self.lookforward = lookforward
         self.strippulses = {}
         for strip in self.lappdevent.stripevents:
-            self._add_pulse(strip, slice_point)
+            self._add_pulse(
+                strip, slice_point, lookback=self.lookback, lookforward=self.lookforward)
         self.leftmatrix, self.rightmatrix = self._build_matrix()
 
     @ classmethod
@@ -310,8 +336,8 @@ class LAPPDPulse():
     def _add_pulse(self,
                    strip: int,
                    slice_point: int,
-                   lookback: float = LOOKBACK,
-                   lookforward: float = LOOKFORWARD
+                   lookback: float = cfg.LOOKBACK,
+                   lookforward: float = cfg.LOOKFORWARD
                    ) -> None:
         """Adds a StripPulse centered around slice_point to the LAPPDPulse"""
         slicedleft = caenreader.sliceAroundPeak(
@@ -332,15 +358,36 @@ class LAPPDPulse():
     def centroid_height(self, plot=False):
         leftvals = []
         rightvals = []
+        strips = []
+        strippos = []
         for strip in self.strippulses.keys():
             strippulse = self.strippulses[strip]
             leftvals.append(strippulse.left.height)
             rightvals.append(strippulse.right.height)
+            strips.append(strip)
+            strippos.append(-3.4 + (6.9 * strip))
         leftcent = sum(leftvals) / len(leftvals)
         rightcent = sum(rightvals) / len(rightvals)
+        # gr = root.TGraph(len(rightvals), np.asarray(
+        #     strips, dtype="float64"), np.asarray(rightvals, dtype="float64"))
+        # gr.SetMarkerSize(1)
+        # gr.SetMarkerStyle(5)
+        # gaus = root.TF1("gauss", "gaus(0)", 7, 14)
+        # gaus.SetParameter(0, -8)
+        # gaus.SetParameter(1, 13)
+        # gr.Fit("gauss")
+        # gr.Draw("AP")
+        # breakpoint()
         if plot:
-            plt.plot(self.strippulses.keys(), leftvals)
-            plt.plot(self.strippulses.keys(), rightvals)
+            plt.errorbar(strippos, leftvals, yerr=cfg.VOLTAGEJITTER, xerr=1.7,
+                         marker=".", capsize=5, label="left", c="green")
+            plt.plot(strippos, rightvals,
+                     "x", label="right", c="purple")
+            plt.xlabel = "Strip number"
+            plt.ylabel = "Amplitude (mV)"
+            plt.xticks(strippos)
+            plt.grid(True, which="major", linestyle="--")
+            plt.legend()
             plt.show()
         return leftcent, rightcent
 
@@ -407,13 +454,16 @@ if __name__ == "__main__":
     for levent in LAPPDEvent.search_all(base_dir):
         if levent.event_no % 100 == 0:
             print(f"Analysing {levent.event_no}")
+        for strip, sevent in levent.stripevents.items():
+            for pulse in sevent.pulses:
+                print(f"Strip {strip}: Position: {pulse.position}")
         levent.plot_both()
         breakpoint()
     for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
         # psf = lpulses[0].leftmatrix[0:3, :]
         # levent.set_rootfile("testfile.root")
         # levent.write_root()
-        lpulses[0].centroid_integral()
+        lpulses[0].centroid_height(plot=True)
         for npulse in lpulses[0].strippulses:
             pulse = lpulses[0].strippulses[npulse].left
             if pulse.peak_present:

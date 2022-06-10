@@ -5,26 +5,10 @@ from typing import Generator, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .utils import gimmedatwave as gdw
 from .pulse import Pulse
+from .utils import gimmedatwave as gdw
+from .utils import lappdcfg as cfg
 from .utils.cxxbindings import caenreader
-from .utils.lappdcfg import config as lcfg
-
-peakparams = lcfg['PEAKPARAMS']
-daqconfig = lcfg['DAQCONFIG']
-
-NS_PER_SAMPLE = daqconfig.getfloat("nspersample")
-NSAMPLES = daqconfig.getint("nsamples")
-NREMOVEDSAMPLES = 10
-MINHEIGHT = peakparams.getfloat("minheight")  # mV
-MINDISTANCE = peakparams.getfloat("mindistance")
-RELHEIGHT = peakparams.getfloat("relheight")
-MINRELPULSEHEIGHT = peakparams.getfloat("minrelpulseheight")
-MAXRELPULSEHEIGHT = peakparams.getfloat("maxrelpulseheight")
-MAXOFFSET = peakparams.getfloat("maxoffset")
-INTERPFACTOR = peakparams.getint("interpfactor")
-LOOKBACK = peakparams.getfloat("slicelookback")
-LOOKFORWARD = peakparams.getfloat("slicelookforward")
 
 
 class StripPulse():
@@ -52,19 +36,30 @@ class StripPulse():
         if self.offset is not None:
             if self.left.cfpeak is not None and self.right.cfpeak is not None:
                 self.cfd_offset = self.left.cfpeak - self.right.cfpeak
+                self.position = self.get_transverse_position()
             else:
                 self.cfd_offset = None
+                self.position = None
         else:
             self.cfd_offset = None
+            self.position = None
 
     def _get_offset(self):
         offset = self.left.peaktime - self.right.peaktime
-        return offset if offset < MINDISTANCE else None
+        return offset if offset < cfg.MINDISTANCE else None
 
     def plot(self):
-        plt.plot(self.left.smoothedtimes, self.left.smoothedwave, alpha=0.75)
-        plt.plot(self.right.smoothedtimes, self.right.smoothedwave, alpha=0.75)
+        plt.plot(self.left.smoothedtimes, self.left.smoothedwave,
+                 alpha=0.75, label="left", c="green")
+        plt.plot(self.right.smoothedtimes, self.right.smoothedwave,
+                 alpha=0.75, label="right", c="purple")
+        plt.xlabel("Time (ns)")
+        plt.ylabel("Amplitude (mV)")
+        plt.legend()
         plt.show()
+
+    def get_transverse_position(self):
+        return self.cfd_offset / cfg.MAXDELTA * (cfg.STRIPLENGTH / 2.0)
 
 # /////////////////////////////////////////////////////////////////////////////
 
@@ -75,7 +70,7 @@ class StripEvent():
                  leftwaveform,
                  rightwaveform,
                  event_no: int = None,
-                 cfg=None,
+                 cfg=cfg,
                  peaks: List[int] = None
                  ) -> None:
 
@@ -90,12 +85,11 @@ class StripEvent():
         self.event_no = event_no
         self.cfg = cfg  # Or just use global?
         # The peaks for each PAIR of Pulses
-        # self.times = [
-        #    i * NS_PER_SAMPLE for i in range(NSAMPLES-NREMOVEDSAMPLES)]
         self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
         self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
         if peaks is None:
-            self._peaks, self.coarse_offsets = self.coarse_correlate(MAXOFFSET)
+            self._peaks, self.coarse_offsets = self.coarse_correlate(
+                cfg.MAXOFFSET)
             self.triggered = True
         else:
             self._peaks = peaks
@@ -111,10 +105,10 @@ class StripEvent():
             # Should both waves be sliced at the same point? i.e. midpoint between two peaks
             if self.triggered:
                 self.search_pulse(
-                    int((peak[0] + peak[1]) / 2), LOOKBACK, LOOKFORWARD)
+                    int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
             else:
                 self.add_pulse(
-                    int((peak[0] + peak[1]) / 2), LOOKBACK, LOOKFORWARD)
+                    int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
 
     @classmethod
     def build(cls, leftfile: str, rightfile: str, event_no: int
@@ -129,9 +123,9 @@ class StripEvent():
     def itr_file(cls, stripnumber: int, dir: str
                  ) -> Generator["StripEvent", None, None]:
         """Yields all events in a file from a single strip. Finds files from dir."""
-        leftchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"L"]
+        leftchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"L"]
         leftfile = gdw.get_filename(leftchannel, base=dir)
-        rightchannel = lcfg['STRIPTODAQ'][str(stripnumber)+"R"]
+        rightchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"R"]
         rightfile = gdw.get_filename(rightchannel, base=dir)
         leftentries = caenreader.getNumberEntries(leftfile)
         rightentries = caenreader.getNumberEntries(rightfile)
@@ -146,10 +140,10 @@ class StripEvent():
     def _find_peaks_custom(self) -> Tuple[np.ndarray, np.ndarray]:
         # print("Finding left peaks")
         leftpeaks = caenreader.findPeaks(
-            self.rawleftwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
+            self.rawleftwaveform.wave, -cfg.MINHEIGHT, int(cfg.MINDISTANCE / cfg.NS_PER_SAMPLE), 5.0)
         # print("Finding right peaks")
         rightpeaks = caenreader.findPeaks(
-            self.rawrightwaveform.wave, -MINHEIGHT, int(MINDISTANCE / NS_PER_SAMPLE), 5.0)
+            self.rawrightwaveform.wave, -cfg.MINHEIGHT, int(cfg.MINDISTANCE / cfg.NS_PER_SAMPLE), 5.0)
         return np.asarray(leftpeaks), np.asarray(rightpeaks)
 
     def _find_peak_heights(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -159,8 +153,8 @@ class StripEvent():
 
     def add_pulse(self,
                   slice_point: int,
-                  lookback: float = LOOKBACK,
-                  lookforward: float = LOOKFORWARD
+                  lookback: float = cfg.LOOKBACK,
+                  lookforward: float = cfg.LOOKFORWARD
                   ) -> None:
         """Adds a pulse centered around slice_point to the StripEvent"""
         slicedleft = caenreader.sliceAroundPeak(
@@ -173,8 +167,8 @@ class StripEvent():
 
     def search_pulse(self,
                      slice_point: int,
-                     lookback: float = LOOKBACK,
-                     lookforward: float = LOOKFORWARD
+                     lookback: float = cfg.LOOKBACK,
+                     lookforward: float = cfg.LOOKFORWARD
                      ) -> None:
         """Searches for a pulse centered around slice_point to the StripEvent,
         appends it if it finds a peak but ignores if not."""
@@ -189,9 +183,9 @@ class StripEvent():
 
     def coarse_correlate(self,
                          max_offset: float,
-                         minrelpulseheight: float = MINRELPULSEHEIGHT,
-                         maxrelpulseheight: float = MAXRELPULSEHEIGHT,
-                         ns_per_sample: float = NS_PER_SAMPLE
+                         minrelpulseheight: float = cfg.MINRELPULSEHEIGHT,
+                         maxrelpulseheight: float = cfg.MAXRELPULSEHEIGHT,
+                         ns_per_sample: float = cfg.NS_PER_SAMPLE
                          ) -> Tuple[List[Tuple[int, int]], List[int]]:
         # An attempt at correlating peaks on two waveform produced from either side of a stripline
         # Looks for pulses within max_offset (ns) and chooses the one with the largest pulse height

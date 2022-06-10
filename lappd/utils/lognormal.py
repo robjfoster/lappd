@@ -26,10 +26,22 @@ class LogNormal:
         return par[3] - (par[0] / ((arr[0]) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr[0]) / par[1]))**2 / (2 * par[2]**2))
 
 
+class ScintPDF:
+
+    def __call__(self, arr, par):
+        # arr[0] = t
+        # par[0] = A1
+        # par[1] = tau1
+        # par[2] = tauR
+        # par[3] = tau2
+        return (par[0] * ((np.exp(-arr[0]/par[1]) - np.exp(-arr[0]/par[2])) / (par[1] - par[2])) +
+                (1 - par[0]) * ((np.exp(-arr[0]/par[3]) - np.exp(-arr[0]/par[2])) / (par[3] - par[2])))
+
+
 def root_ln(x, y):
     maxtime = np.max(x)
     mintime = np.min(x)
-    #c1 = root.TCanvas("c1", "Simple graph example", 200, 10, 700, 500)
+    # c1 = root.TCanvas("c1", "Simple graph example", 200, 10, 700, 500)
     gr = root.TGraph(len(x), x.astype(
         "float64"), y.astype("float64"))
     lognormal = LogNormal()
@@ -45,6 +57,30 @@ def root_ln(x, y):
     # gr.SetMarkerSize(0.5)
     # gr.SetMarkerStyle(20)
     # c1.Update()
+    return tf1
+
+
+def fitscint(hist):
+    scintpdf = ScintPDF()
+    tf1gaus = root.TF1("gauss", "gaus(0)", -5, 5)
+    tf1scint = root.TF1("scintpdf", scintpdf, -10, 30, 4)
+    scintxgausconv = root.TF1Convolution("scintpdf", "gauss", -10, 30, True)
+    scintxgausconv.SetNofPointsFFT(10000)
+    tf1scintxgaus = root.TF1(
+        "scintxgaus", scintxgausconv, -10, 30, scintxgausconv.GetNpar())
+    tf1scintxgaus.SetParNames("A1", "tau1", "tauR",
+                              "tau2", "gausscale", "mean", "sigma")
+    tf1scintxgaus.SetParameters(0.68, 3.0, 1.7, 11, 1, 0, 0.25)
+    tf1scintxgaus.SetParLimits(0, 0.6, 0.7)
+    tf1scintxgaus.SetParLimits(1, 2.0, 4.0)
+    tf1scintxgaus.SetParLimits(2, 1.0, 2.0)
+    tf1scintxgaus.SetParLimits(3, 10, 12)
+    tf1scintxgaus.SetParLimits(4, 1, 1)
+    tf1scintxgaus.SetParLimits(5, -1, 2)
+    tf1scintxgaus.SetParLimits(6, 0.1, 0.4)
+    # hist.Fit("gaus")
+    hist.Fit("scintxgaus")
+    hist.Draw()
     breakpoint()
 
 
@@ -91,8 +127,8 @@ def lnfit4(lpulse, upsample_rate=10, debug=True):
 if __name__ == "__main__":
     tvals = np.arange(0.2, 30, 0.2)
     # breakpoint()
-    #yvals = lognormal(tvals, 0, 0.4, -2, 8.5, 69)
-    #yvals = lognormal2(tvals, 5, 0.1, 20)
+    # yvals = lognormal(tvals, 0, 0.4, -2, 8.5, 69)
+    # yvals = lognormal2(tvals, 5, 0.1, 20)
     yvals = lognormal3(tvals, 15, 1, 25, 0.05)
     print(f"STD: {np.log(np.std(yvals))}")
     print(f"Mean: {np.mean(yvals)}")
