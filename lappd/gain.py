@@ -9,7 +9,7 @@ from .strip import StripEvent
 from .utils import lappdcfg as cfg
 
 base_dir = sys.argv[1]
-stripnumber = sys.argv[2]
+stripnumber = int(sys.argv[2])
 
 
 def peak_to_gain(peak_val, termination_ohms=50):
@@ -34,20 +34,31 @@ sample_end = int(75 / cfg.NS_PER_SAMPLE)
 int_start = int(54 / cfg.NSAMPLES)
 int_end = int(60 / cfg.NSAMPLES)
 
-for sevent in StripEvent.itr_file(stripnumber, base_dir):
-    leftwave = sevent.leftwaveform[sample_start:sample_end]
-    charge = -1 * np.trapz(leftwave, dx=cfg.NS_PER_SAMPLE)
-    if np.min(leftwave) > -4.0 or np.max(leftwave) > 5.0:
-        if charge > 10:
-            continue
-    charges.append(charge)
+# for sevent in StripEvent.itr_file(stripnumber, base_dir):
+#     if sevent.pulses:
+#         for pulse in sevent.pulses:
+#             charge = -1 * np.trapz(pulse.left.wave, dx=NS_PER_SAMPLE)
+#             pulse_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
+#     else:
+#         charge = -1 * np.trapz(sevent.leftwaveform[int_start:int_end])
+#         other_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
 
-th1 = root.TH1F("hist", "hist", 50, -5, 50)
-for value in charges:
+for levent in LAPPDEvent.itr_all(base_dir):
+    sevent = levent.stripevents[stripnumber]
+    if sevent.pulses:
+        for pulse in sevent.pulses:
+            charge = -1 * np.trapz(pulse.left.wave, dx=cfg.NS_PER_SAMPLE)
+            pulse_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
+    else:
+        charge = -1 * np.trapz(sevent.leftwaveform[int_start:int_end])
+        other_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
+
+th1 = root.TH1F("hist", "hist", 150, -0.1, 1.5)
+for value in pulse_charges+other_charges:
     th1.Fill(value)
 th1.SetTitle("Gain;pC;Count")
-tf1 = double_gauss()
-tf1.SetParameters(1000, -0.2, 0.25, 1000, 0.5, 0.15)
-th1.Fit("doublegauss")
+#tf1 = double_gauss()
+#tf1.SetParameters(1000, -0.2, 0.25, 1000, 0.5, 0.15)
+# th1.Fit("doublegauss")
 th1.Draw()
 breakpoint()

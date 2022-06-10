@@ -54,8 +54,7 @@ class Pulse():
         return peaks[0]
 
     def fit(self):
-        tf1 = root_ln(self.times, self.wave)
-        return tf1
+        return root_ln(self.times, self.wave)
 
     def plot(self) -> None:
         plt.plot(self.smoothedtimes, self.smoothedwave)

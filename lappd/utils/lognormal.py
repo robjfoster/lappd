@@ -25,6 +25,9 @@ class LogNormal:
     def __call__(self, arr, par):
         return par[3] - (par[0] / ((arr[0]) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr[0]) / par[1]))**2 / (2 * par[2]**2))
 
+    def npcall(self, arr, par):
+        return par[3] - (par[0] / ((arr) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr) / par[1]))**2 / (2 * par[2]**2))
+
 
 class ScintPDF:
 

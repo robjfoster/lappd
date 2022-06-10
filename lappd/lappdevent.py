@@ -8,7 +8,7 @@ import numpy as np
 import ROOT as root
 from mpl_toolkits import mplot3d
 
-from .matching import match_peaks
+from .matching import detect_peaks, match_peaks
 from .strip import StripEvent, StripPulse
 from .utils import gimmedatwave as gdw
 from .utils import lappdcfg as cfg
@@ -365,19 +365,26 @@ class LAPPDPulse():
             leftvals.append(strippulse.left.height)
             rightvals.append(strippulse.right.height)
             strips.append(strip)
-            strippos.append(-3.4 + (6.9 * strip))
+            strippos.append(-3.4 + (6.9*strip))
         leftcent = sum(leftvals) / len(leftvals)
         rightcent = sum(rightvals) / len(rightvals)
-        # gr = root.TGraph(len(rightvals), np.asarray(
-        #     strips, dtype="float64"), np.asarray(rightvals, dtype="float64"))
-        # gr.SetMarkerSize(1)
-        # gr.SetMarkerStyle(5)
-        # gaus = root.TF1("gauss", "gaus(0)", 7, 14)
-        # gaus.SetParameter(0, -8)
-        # gaus.SetParameter(1, 13)
-        # gr.Fit("gauss")
-        # gr.Draw("AP")
-        # breakpoint()
+        gr = root.TGraphErrors(len(leftvals),
+                               np.asarray(strippos, dtype="float64"),
+                               np.asarray(leftvals, dtype="float64"),
+                               np.asarray(
+                                   [1.7 for i in range(len(strippos))], dtype="float64"),
+                               np.asarray([cfg.VOLTAGEJITTER for i in range(len(strippos))], dtype="float64"))
+        tf1 = root.TF1("mygaus", "-1 * gaus(0)", strippos[0], strippos[-1])
+        tf1.SetParameter(0, 12)
+        tf1.SetParameter(1, strippos[np.argmin(leftvals)])
+        tf1.SetParameter(2, 2)
+        tf1.SetParLimits(0, min(leftvals)/2.0, min(leftvals) * 3.0)
+        tf1.SetParLimits(2, 0.05, 3.5)
+        gr.Fit("mygaus")
+        gr.SetMarkerSize(3)
+        gr.SetTitle("Vertical position; Transverse position; Amplitude (mV)")
+        gr.Draw("AP")
+        breakpoint()
         if plot:
             plt.errorbar(strippos, leftvals, yerr=cfg.VOLTAGEJITTER, xerr=1.7,
                          marker=".", capsize=5, label="left", c="green")
