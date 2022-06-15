@@ -11,6 +11,7 @@ from .utils.pdf import AmplPDF, LocPDF, TimePDF
 
 Hit = namedtuple("Hit", "x y")
 Hit3D = namedtuple("Hit3D", "x y z")
+RecoHit = namedtuple("RecoHit", "recox recoy x y z")
 Pair = namedtuple("Pair", "left right")
 
 x = np.arange(0, 1014, 1)
@@ -55,7 +56,7 @@ def detect_peaks(matrix, threshold=5, min_distance=10, exclude_border=False):
         matrix, threshold_abs=threshold, min_distance=min_distance, exclude_border=exclude_border)
     peaks = []
     for coord in coordinates:
-        peaks.append(Hit(coord[1], coord[0]))
+        peaks.append(Hit3D(coord[1], coord[0], matrix[coord[0], coord[1]]))
     return peaks
 
 
@@ -129,14 +130,14 @@ if __name__ == "__main__":
     from matplotlib import cm
 
     from .lappdevent import LAPPDEvent
-    from .utils.interpolation import interp_matrix
+    from .utils.interpolation import interp_matrix, gauss_interp
     from .utils.wiener import do_wiener
 
     fancy_plot = True
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
     for levent in LAPPDEvent.itr_all(base_dir):
-        if levent.event_no < 301:
+        if levent.event_no < 101:
             continue
         if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70:
             continue
@@ -156,6 +157,8 @@ if __name__ == "__main__":
         # rightclean = rightdeconinterp * rightinterp
         # leftpeaks = detect_peaks2(leftclean)
         # rightpeaks = detect_peaks2(rightclean)
+        # leftcleaninterp = gauss_interp(leftclean)
+        # rightcleaninterp = gauss_interp(rightclean)
         leftcleaninterp = interp_matrix(leftclean)
         rightcleaninterp = interp_matrix(rightclean)
         leftpeaks = detect_peaks(
@@ -233,8 +236,30 @@ if __name__ == "__main__":
             ax2.set_title("Left, deconvolved, interpolated")
             ax5.set_title("Right, deconvolved, interpolated")
             # To set the axis ticks:
-            # ax1.set_xticks(np.arange(0, 1014, 100))
-            # ax1.set_xticklabels(np.arange(0, 210, 20))
+            ax1.set_xticks(np.arange(0, 1014, 100))
+            ax1.set_xticklabels(np.arange(0, 210, 20))
+            ax1.set_yticks(np.arange(0, 8, 1))
+            ax1.set_yticklabels(np.arange(14, 6, -1))
+            ax4.set_xticks(np.arange(0, 1014, 100))
+            ax4.set_xticklabels(np.arange(0, 210, 20))
+            ax4.set_yticks(np.arange(0, 8, 1))
+            ax4.set_yticklabels(np.arange(14, 6, -1))
+            ax2.set_xticks(np.arange(0, 10140, 1000))
+            ax2.set_xticklabels(np.arange(0, 210, 20))
+            ax2.set_yticks(np.arange(0, 80, 10))
+            ax2.set_yticklabels(np.arange(14, 6, -1))
+            ax5.set_xticks(np.arange(0, 10140, 1000))
+            ax5.set_xticklabels(np.arange(0, 210, 20))
+            ax5.set_yticks(np.arange(0, 80, 10))
+            ax5.set_yticklabels(np.arange(14, 6, -1))
+            ax1.set_xlabel("Time (ns)")
+            ax1.set_ylabel("Stripnumber")
+            ax4.set_xlabel("Time (ns)")
+            ax4.set_ylabel("Stripnumber")
+            ax2.set_xlabel("Time (ns)")
+            ax2.set_ylabel("Stripnumber")
+            ax5.set_xlabel("Time (ns)")
+            ax5.set_ylabel("Stripnumber")
             fig.colorbar(base_img, ax=[ax0, ax1, ax2, ax3, ax4, ax5],
                          orientation="horizontal", fraction=0.016)
         else:
@@ -251,7 +276,7 @@ if __name__ == "__main__":
             ax[1, 0].set_title("Left, deconvolved, interpolated")
             ax[1, 1].set_title("Right, deconvolved, interpolated")
             fig.colorbar(base_img, ax=ax.ravel().tolist(),
-                         orientation="horizontal", fraction=0.046)
+                         orientation="horizontal", fraction=0.046, anchor=(1.0, 0.0))
             fig.suptitle(f"Event {levent.event_no}")
             # plt.imshow(leftinterp, aspect="auto")
             for peak in leftpeaks:
@@ -273,7 +298,9 @@ if __name__ == "__main__":
             xpos, xposerr = transverse_position(
                 x_to_t(pair.left.x), x_to_t(pair.right.x))
             ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
-            hits.append(Hit(xpos, ypos))
+            recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
+                              2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
+            hits.append(recohit)
             hiterrs.append(Hit(xposerr, 5))
             ax2.scatter(pair.left.x, pair.left.y, c="pink", s=25, marker="o")
             ax5.scatter(pair.right.x, pair.right.y, c="pink", s=25, marker="o")
@@ -296,10 +323,12 @@ if __name__ == "__main__":
         #     if i in rpair:
         #         continue
         #     ax5.scatter(peak[1], peak[0], c="red", s=25, marker="x")
+        plt.subplots_adjust(left=0.125, bottom=0.181,
+                            right=0.9, top=0.926, wspace=0.2, hspace=0.22)
         plt.show()
-        for i, (xpos, ypos) in enumerate(hits):
+        for i, (xpos, ypos, _, _, _) in enumerate(hits):
             plt.annotate(str(i), xy=(xpos+2.5, ypos+2.5), c="black")
-        plt.errorbar([hit.x for hit in hits], [hit.y for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
+        plt.errorbar([hit.recox for hit in hits], [hit.recoy for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
                      yerr=[hiterr.y for hiterr in hiterrs], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
         for i in strip_positions:
             plt.axhline(i, c="purple", alpha=0.2)
