@@ -42,6 +42,7 @@ AMPLPDFSIGMA = analysis.getfloat("amplpdfsigma")
 AMPLPFDFSTART = analysis.getfloat("amplpdfstart")
 AMPLPDFEND = analysis.getfloat("amplpdfend")
 PROPERROR = analysis.getfloat("properror")
+MINLIKE = analysis.getfloat("minlike")
 
 SOL = constants.getfloat("sol")
 STRIPLENGTH = constants.getfloat("striplength")
