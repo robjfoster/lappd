@@ -7,6 +7,7 @@ from skimage.feature import peak_local_max
 
 from .utils import lappdcfg as cfg
 from .utils.pdf import AmplPDF, LocPDF, TimePDF
+import lappd.utils.sigutils as su
 
 
 Hit = namedtuple("Hit", "x y")
@@ -49,6 +50,12 @@ def transverse_position(lefttime, righttime):
     return pos, abs(poserror)
 
 
+def cfd_timestamp(matrix: np.ndarray, hit: Hit3D):
+    strippulse = matrix[hit.y]
+    timestamp = su.cfd(strippulse*-1, 0.2, userpeak=hit.x)
+    return timestamp
+
+
 def detect_peaks(matrix, threshold=5, min_distance=10, exclude_border=False):
     # neighborhood = generate_binary_structure(2, 2)
     # image_max = maximum_filter(matrix, size=2, mode="constant")
@@ -89,7 +96,7 @@ def match_peaks(leftpeaks: np.ndarray,
             thislike.append(likex * likey * likez)
         likelihood.append(thislike)
     likelihood = np.asarray(likelihood)
-    min_like = 1e-15
+    min_like = cfg.MINLIKE
     # Copy of likelihood matrix that will be *modified* in the loop.
     # likelihood is left unmodified
     mod_likelihood = np.copy(likelihood)
@@ -99,10 +106,11 @@ def match_peaks(leftpeaks: np.ndarray,
         pair = np.unravel_index(
             np.argmax(mod_likelihood), mod_likelihood.shape)
         # Find value of likelihood at this index
-        maxlike = mod_likelihood[pair[0], pair[1]]
+        max_like = mod_likelihood[pair[0], pair[1]]
+        #print(f'Max likelihood: {max_like}')
         # Compare to our likelihood limit
-        if maxlike < min_like:
-            print(f"Last likelihood value: {maxlike}")
+        if max_like < min_like:
+            #print(f"Last likelihood value: {max_like}")
             break
         # If it passes, keep it
         thispair = Pair(leftpeaks[pair[0]], rightpeaks[pair[1]])
@@ -118,6 +126,12 @@ def match_peaks(leftpeaks: np.ndarray,
     right_unmatched = []
     for i in unmatched[1]:
         right_unmatched.append(rightpeaks[i])
+    print(f"Matched {len(pairs)} pairs")
+    if len(left_unmatched) == 0 and len(right_unmatched) == 0:
+        print("All pairs matched")
+    else:
+        print(f"{len(left_unmatched)} left hit unmatched")
+        print(f"{len(right_unmatched)} right hit unmatched")
     return pairs, (left_unmatched, right_unmatched)
 
 
@@ -207,6 +221,8 @@ if __name__ == "__main__":
         #     mod_likelihood[pair[0], :] = -9999
         #     mod_likelihood[:, pair[1]] = -9999
         pairs, unmatched = match_peaks(leftpeaks, rightpeaks)
+        if len(pairs) == 0 and len(unmatched[0]) == 0 and len(unmatched[1]) == 0:
+            continue
         # Plotting
         if fancy_plot:
             fig = plt.figure()
@@ -295,8 +311,10 @@ if __name__ == "__main__":
             # lpairy = leftpeaks[pair[0]][0]
             # rpairx = rightpeaks[pair[1]][1]
             # rpairy = rightpeaks[pair[1]][0]
+            leftcfd = cfd_timestamp(leftcleaninterp, pair.left)
+            rightcfd = cfd_timestamp(rightcleaninterp, pair.right)
             xpos, xposerr = transverse_position(
-                x_to_t(pair.left.x), x_to_t(pair.right.x))
+                x_to_t(leftcfd), x_to_t(rightcfd))
             ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
             recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
@@ -337,4 +355,4 @@ if __name__ == "__main__":
         plt.xlabel("Horizontal position (mm)")
         plt.ylabel("Vertical position (mm)")
         plt.show()
-        # breakpoint()
+        breakpoint()
