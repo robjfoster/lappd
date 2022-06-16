@@ -69,6 +69,8 @@ def detect_peaks(matrix, threshold=5, min_distance=10, exclude_border=False):
 
 def match_peaks(leftpeaks: np.ndarray,
                 rightpeaks: np.ndarray,
+                leftcleaninterp,
+                rightcleaninterp,
                 min_like: float = 1e-15
                 ) -> List[Tuple[int]]:
     if len(leftpeaks) == 0 or len(rightpeaks) == 0:
@@ -146,15 +148,16 @@ if __name__ == "__main__":
     from .lappdevent import LAPPDEvent
     from .utils.interpolation import interp_matrix, gauss_interp
     from .utils.wiener import do_wiener
-
-    fancy_plot = True
+    all_hits = []
+    fancy_plot = False
+    unfancy_plot = False
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
     for levent in LAPPDEvent.itr_all(base_dir):
-        if levent.event_no < 101:
+        if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
             continue
-        if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70:
-            continue
+        if levent.event_no > 1:
+            break
         template = np.load("template2d.npy")
         print(f"Event number: {levent.event_no}")
         left = levent.leftmatrix
@@ -278,7 +281,7 @@ if __name__ == "__main__":
             ax5.set_ylabel("Stripnumber")
             fig.colorbar(base_img, ax=[ax0, ax1, ax2, ax3, ax4, ax5],
                          orientation="horizontal", fraction=0.016)
-        else:
+        elif unfancy_plot:
             fig, ax = plt.subplots(2, 2)
             base_img = ax[0, 0].imshow(
                 left[0:8], aspect="auto", interpolation="none")
@@ -305,7 +308,6 @@ if __name__ == "__main__":
                 ax[1, 1].scatter(peak[1], peak[0], c="red", s=5, marker="x")
         hits = []
         hiterrs = []
-        # Plot the matched peaks as pink circles and number them
         for i, pair in enumerate(pairs):
             # lpairx = leftpeaks[pair[0]][1]
             # lpairy = leftpeaks[pair[0]][0]
@@ -320,39 +322,54 @@ if __name__ == "__main__":
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hits.append(recohit)
             hiterrs.append(Hit(xposerr, 5))
-            ax2.scatter(pair.left.x, pair.left.y, c="pink", s=25, marker="o")
-            ax5.scatter(pair.right.x, pair.right.y, c="pink", s=25, marker="o")
-            # , c="green", s=4, marker="x")
-            ax2.annotate(str(i), xy=(pair.left.x, pair.left.y), c="white")
-            # , c="green", s=4, marker="x")
-            ax5.annotate(str(i), xy=(pair.right.x, pair.right.y), c="white")
-        lpair = [i[0] for i in pairs]
-        rpair = [i[1] for i in pairs]
-        # Plot the unmatched peaks as red crosses
-        for lhit in unmatched[0]:
-            ax2.scatter(lhit.x, lhit.y, c="red", s=25, marker="x")
-        for rhit in unmatched[1]:
-            ax5.scatter(rhit.x, rhit.y, c="red", s=25, marker="x")
-        # for i, peak in enumerate(leftpeaks):
-        #     if i in lpair:
-        #         continue
-        #     ax2.scatter(peak[1], peak[0], c="red", s=25, marker="x")
-        # for i, peak in enumerate(rightpeaks):
-        #     if i in rpair:
-        #         continue
-        #     ax5.scatter(peak[1], peak[0], c="red", s=25, marker="x")
-        plt.subplots_adjust(left=0.125, bottom=0.181,
-                            right=0.9, top=0.926, wspace=0.2, hspace=0.22)
-        plt.show()
-        for i, (xpos, ypos, _, _, _) in enumerate(hits):
+        if fancy_plot:
+            # Plot the matched peaks as pink circles and number them
+            for i, pair in enumerate(pairs):
+                # xpos, xposerr = transverse_position(
+                #     x_to_t(pair.left.x), x_to_t(pair.right.x))
+                # ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
+                # hits.append(Hit(xpos, ypos))
+                # hiterrs.append(Hit(xposerr, 5))
+                ax2.scatter(pair.left.x, pair.left.y,
+                            c="pink", s=25, marker="o")
+                ax5.scatter(pair.right.x, pair.right.y,
+                            c="pink", s=25, marker="o")
+                # , c="green", s=4, marker="x")
+                ax2.annotate(str(i), xy=(pair.left.x, pair.left.y), c="white")
+                # , c="green", s=4, marker="x")
+                ax5.annotate(str(i), xy=(
+                    pair.right.x, pair.right.y), c="white")
+            lpair = [i[0] for i in pairs]
+            rpair = [i[1] for i in pairs]
+            # Plot the unmatched peaks as red crosses
+            for lhit in unmatched[0]:
+                ax2.scatter(lhit.x, lhit.y, c="red", s=25, marker="x")
+            for rhit in unmatched[1]:
+                ax5.scatter(rhit.x, rhit.y, c="red", s=25, marker="x")
+            plt.show()
+        for i, (xpos, ypos) in enumerate(hits):
             plt.annotate(str(i), xy=(xpos+2.5, ypos+2.5), c="black")
-        plt.errorbar([hit.recox for hit in hits], [hit.recoy for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
-                     yerr=[hiterr.y for hiterr in hiterrs], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
-        for i in strip_positions:
-            plt.axhline(i, c="purple", alpha=0.2)
-        plt.ylim(0, 200)
-        plt.xlim(-150, 150)
-        plt.xlabel("Horizontal position (mm)")
-        plt.ylabel("Vertical position (mm)")
-        plt.show()
-        breakpoint()
+        if fancy_plot:
+            plt.errorbar([hit.x for hit in hits], [hit.y for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
+                         yerr=[hiterr.y for hiterr in hiterrs], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
+            for i in strip_positions:
+                plt.axhline(i, c="purple", alpha=0.2)
+            plt.ylim(0, 200)
+            plt.xlim(-150, 150)
+            plt.xlabel("Horizontal position (mm)")
+            plt.ylabel("Vertical position (mm)")
+            plt.show()
+        if hits:
+            all_hits += hits
+    #np.save("allhits.npy", all_hits)
+    heatmap, xedges, yedges = np.histogram2d([hit.x for hit in all_hits], [
+                                             hit.y for hit in all_hits], bins=150, range=[[-150, 150], [0, 200]])
+    extent = [-150, 150, 0, 200]
+    plt.clf()
+    plt.imshow(heatmap.T, extent=extent, origin='lower')
+    plt.colorbar()
+    plt.title("BGO + Sr90 masked 0-160 mm in x")
+    plt.xlabel("Reconstructed x position (mm)")
+    plt.ylabel("Reconstructed y position (mm)")
+    plt.show()
+    breakpoint()
