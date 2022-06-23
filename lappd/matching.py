@@ -115,6 +115,19 @@ def detect_peaks(matrix, threshold=3, min_distance=5, exclude_border=False):
     return peaks
 
 
+def plot_hitmap(hits, bins=150):
+    heatmap, xedges, yedges = np.histogram2d([hit.recox for hit in hits], [
+                                             hit.recoy for hit in hits], bins=bins, range=[[-150, 150], [0, 200]])
+    extent = [-150, 150, 0, 200]
+    plt.clf()
+    plt.imshow(heatmap.T, extent=extent, origin='lower')
+    plt.colorbar()
+    plt.title("BGO + Sr90 masked 0-160 mm in x")
+    plt.xlabel("Reconstructed x position (mm)")
+    plt.ylabel("Reconstructed y position (mm)")
+    plt.show()
+
+
 def match_peaks(leftpeaks: np.ndarray,
                 rightpeaks: np.ndarray,
                 leftcleaninterp,
@@ -209,8 +222,8 @@ if __name__ == "__main__":
     for levent in LAPPDEvent.itr_all(base_dir):
         if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
             continue
-        if levent.event_no > 1:
-            break
+        # if levent.event_no > 5000:
+        #     break
         template = np.load("template2d.npy")
         print(f"Event number: {levent.event_no}")
         left = levent.leftmatrix
@@ -372,15 +385,6 @@ if __name__ == "__main__":
             plt.show()
         if hits:
             all_hits += hits
-    #np.save("allhits.npy", all_hits)
-    heatmap, xedges, yedges = np.histogram2d([hit.recox for hit in all_hits], [
-                                             hit.recoy for hit in all_hits], bins=150, range=[[-150, 150], [0, 200]])
-    extent = [-150, 150, 0, 200]
-    plt.clf()
-    plt.imshow(heatmap.T, extent=extent, origin='lower')
-    plt.colorbar()
-    plt.title("BGO + Sr90 masked 0-160 mm in x")
-    plt.xlabel("Reconstructed x position (mm)")
-    plt.ylabel("Reconstructed y position (mm)")
-    plt.show()
+    np.save("allhits.npy", all_hits)
+    plot_hitmap(all_hits, bins=300)
     breakpoint()

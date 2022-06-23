@@ -233,7 +233,8 @@ def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethres
                 #                  (peak_sample - (i+1))) / 2.0
                 break
     if thresh_sample is None or (peak_sample + samplesabovethresh > len(wave)):
-        return None
+        print("CFD did not work!")
+        return userpeak if userpeak else peak_sample
     if plot and thresh_sample:
         plt.plot(wave, "x", linestyle="-", markersize=1)
         plt.axvline(thresh_sample, c="g")
