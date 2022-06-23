@@ -56,7 +56,55 @@ def cfd_timestamp(matrix: np.ndarray, hit: Hit3D):
     return timestamp
 
 
-def detect_peaks(matrix, threshold=5, min_distance=10, exclude_border=False):
+def get_centroid(matrix: np.ndarray, hit: Hit3D, width: int = 10) -> float:
+    if hit.y+10 >= matrix.shape[0]:
+        upper = matrix.shape[0]-1
+    else:
+        upper = width
+    if hit.y-10 < 0:
+        lower = 0
+    else:
+        lower = width
+    slicedmatrix = matrix[hit.y-lower:hit.y+upper, hit.x]
+    # if we assume the hit profile across strips is gaussian...
+    centroid = np.mean(slicedmatrix)
+    return hit.y - upper + centroid
+
+
+def get_centroid_combined(
+    leftmatrix: np.ndarray,
+    rightmatrix: np.ndarray,
+    lefthit: Hit3D,
+    righthit: Hit3D,
+    width: int = 10
+) -> float:
+    if lefthit.y+10 >= leftmatrix.shape[0]:
+        leftupper = leftmatrix.shape[0]-1
+    else:
+        leftupper = width
+    if lefthit.y-10 < 0:
+        leftlower = 0
+    else:
+        leftlower = width
+    if righthit.y+10 >= rightmatrix.shape[0]:
+        rightupper = rightmatrix.shape[0]-1
+    else:
+        rightupper = width
+    if righthit.y-10 < 0:
+        rightlower = 0
+    else:
+        rightlower = width
+    lower = max(leftlower, rightlower)
+    upper = min(leftupper, rightupper)
+    leftslicedmatrix = leftmatrix[lefthit.y-lower:lefthit.y+upper, lefthit.x]
+    rightslicedmatrix = rightmatrix[righthit.y -
+                                    lower:righthit.y+upper, righthit.x]
+    slicedmatrix = (leftslicedmatrix + rightslicedmatrix) / 2.0
+    centroid = np.mean(slicedmatrix)
+    return ((lefthit.y + righthit.y) / 2.0) - upper + centroid
+
+
+def detect_peaks(matrix, threshold=3, min_distance=5, exclude_border=False):
     # neighborhood = generate_binary_structure(2, 2)
     # image_max = maximum_filter(matrix, size=2, mode="constant")
     coordinates = peak_local_max(
@@ -71,21 +119,24 @@ def match_peaks(leftpeaks: np.ndarray,
                 rightpeaks: np.ndarray,
                 leftcleaninterp,
                 rightcleaninterp,
-                min_like: float = 1e-15
+                min_like: float = 1e-15,
+                interpfactor: float = 10
                 ) -> List[Tuple[int]]:
     if len(leftpeaks) == 0 or len(rightpeaks) == 0:
         return [], [[], []]
     likelihood = []
     for lpeak in leftpeaks:
         # Convert x, y, z to t, loc, ampl
-        lpeakt = x_to_t(lpeak.x)
-        lpeakloc = y_to_loc(lpeak.y)
-        lpeakampl = z_to_ampl(leftcleaninterp[lpeak.y, lpeak.x])
+        lpeakt = x_to_t(lpeak.x, interpfactor=interpfactor)
+        lpeakloc = y_to_loc(lpeak.y, interpfactor=interpfactor)
+        lpeakampl = z_to_ampl(
+            leftcleaninterp[lpeak.y, lpeak.x])
         thislike = []
         for rpeak in rightpeaks:
-            rpeakt = x_to_t(rpeak.x)
-            rpeakloc = y_to_loc(rpeak.y)
-            rpeakampl = z_to_ampl(rightcleaninterp[rpeak.y, rpeak.x])
+            rpeakt = x_to_t(rpeak.x, interpfactor=interpfactor)
+            rpeakloc = y_to_loc(rpeak.y, interpfactor=interpfactor)
+            rpeakampl = z_to_ampl(
+                rightcleaninterp[rpeak.y, rpeak.x])
             # Calculate the left right deltas
             deltax = np.abs(lpeakt - rpeakt)
             deltay = np.abs(lpeakloc - rpeakloc)
@@ -129,6 +180,8 @@ def match_peaks(leftpeaks: np.ndarray,
     for i in unmatched[1]:
         right_unmatched.append(rightpeaks[i])
     print(f"Matched {len(pairs)} pairs")
+    left_unmatched = list(set(left_unmatched))
+    right_unmatched = list(set(right_unmatched))
     if len(left_unmatched) == 0 and len(right_unmatched) == 0:
         print("All pairs matched")
     else:
@@ -145,9 +198,9 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from matplotlib import cm
 
-    from .lappdevent import LAPPDEvent
-    from .utils.interpolation import interp_matrix, gauss_interp
-    from .utils.wiener import do_wiener
+    from lappd.lappdevent import LAPPDEvent
+    from lappd.utils import interpolation
+    from lappd.utils.wiener import do_wiener
     all_hits = []
     fancy_plot = False
     unfancy_plot = False
@@ -166,64 +219,20 @@ if __name__ == "__main__":
         thismax = max((np.max(left), np.max(right)))
         leftclean = do_wiener(left, template)
         rightclean = do_wiener(right, template)
-        # leftdeconinterp = interp_matrix(leftdecon)
-        # rightdeconinterp = interp_matrix(rightdecon)
-        # leftinterp = interp_matrix(left)
-        # rightinterp = interp_matrix(right)
-        # leftclean = leftdeconinterp * leftinterp
-        # rightclean = rightdeconinterp * rightinterp
-        # leftpeaks = detect_peaks2(leftclean)
-        # rightpeaks = detect_peaks2(rightclean)
-        # leftcleaninterp = gauss_interp(leftclean)
-        # rightcleaninterp = gauss_interp(rightclean)
-        leftcleaninterp = interp_matrix(leftclean)
-        rightcleaninterp = interp_matrix(rightclean)
+        leftcleaninterp = interpolation.interp_matrix(leftclean)
+        rightcleaninterp = interpolation.interp_matrix(rightclean)
         leftpeaks = detect_peaks(
             leftcleaninterp, threshold=6, exclude_border=(3, 3))
         rightpeaks = detect_peaks(
-            rightcleaninterp, threshold=6, exclude_border=(3, 3))
-        # likelihood = []
-        # if len(leftpeaks) == 0 or len(rightpeaks) == 0:
-        #     continue
-        # for lpeak in leftpeaks:
-        #     lpeakt = x_to_t(lpeak[1])
-        #     lpeakloc = y_to_loc(lpeak[0])
-        #     lpeakampl = z_to_ampl(leftcleaninterp[lpeak[0], lpeak[1]])
-        #     thislike = []
-        #     for rpeak in rightpeaks:
-        #         rpeakt = x_to_t(rpeak[1])
-        #         rpeakloc = y_to_loc(rpeak[0])
-        #         rpeakampl = z_to_ampl(rightcleaninterp[rpeak[0], rpeak[1]])
-        #         deltax = np.abs(lpeakt - rpeakt)
-        #         deltay = np.abs(lpeakloc - rpeakloc)
-        #         deltaz = np.abs(lpeakampl - rpeakampl)
-        #         likex = time_like(deltax, pdfsum=time_sum)
-        #         likey = loc_like(deltay, pdfsum=loc_sum)
-        #         likez = ampl_like(deltaz, pdfsum=ampl_sum)
-        #         thislike.append(likex * likey * likez)
-        #     likelihood.append(thislike)
-        # likelihood = np.asarray(likelihood)
-        # min_like = 1e-15
-        # # Copy of likelihood matrix that will be *modified* in the loop.
-        # # likelihood is left unmodified
-        # mod_likelihood = np.copy(likelihood)
-        # pairs = []
-        # while True:
-        #     # Get index of max value in matrix
-        #     pair = np.unravel_index(
-        #         np.argmax(mod_likelihood), mod_likelihood.shape)
-        #     # Find value of likelihood at this index
-        #     maxlike = mod_likelihood[pair[0], pair[1]]
-        #     # Compare to our likelihood limit
-        #     if maxlike < min_like:
-        #         print(f"Last likelihood value: {maxlike}")
-        #         break
-        #     # If it passes, keep it
-        #     pairs.append(pair)
-        #     # Remove the row and column from contention because these have been paired off.
-        #     mod_likelihood[pair[0], :] = -9999
-        #     mod_likelihood[:, pair[1]] = -9999
-        pairs, unmatched = match_peaks(leftpeaks, rightpeaks)
+            rightcleaninterp, threshold=cfg.MINHEIGHT, exclude_border=(3, 3))
+        pairs, unmatched = match_peaks(
+            leftpeaks, rightpeaks, leftcleaninterp, rightcleaninterp)
+        # leftpeakscoarse = detect_peaks(
+        #     leftclean, threshold=cfg.MINHEIGHT, exclude_border=(1, 1))
+        # rightpeakscoarse = detect_peaks(
+        #     rightclean, threshold=cfg.MINHEIGHT, exclude_border=(1, 1))
+        # pairscoarse, unmatchedcoarse = match_peaks(
+        #     leftpeakscoarse, rightpeakscoarse, leftclean, rightclean, interpfactor=1)
         if len(pairs) == 0 and len(unmatched[0]) == 0 and len(unmatched[1]) == 0:
             continue
         # Plotting
@@ -318,6 +327,8 @@ if __name__ == "__main__":
             xpos, xposerr = transverse_position(
                 x_to_t(leftcfd), x_to_t(rightcfd))
             ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
+            ypos = y_to_loc(get_centroid(leftcleaninterp, pair.left) +
+                            get_centroid(rightcleaninterp, pair.right) / 2.0)
             recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hits.append(recohit)
@@ -347,10 +358,10 @@ if __name__ == "__main__":
             for rhit in unmatched[1]:
                 ax5.scatter(rhit.x, rhit.y, c="red", s=25, marker="x")
             plt.show()
-        for i, (xpos, ypos) in enumerate(hits):
+        for i, (xpos, ypos, _, _, _) in enumerate(hits):
             plt.annotate(str(i), xy=(xpos+2.5, ypos+2.5), c="black")
         if fancy_plot:
-            plt.errorbar([hit.x for hit in hits], [hit.y for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
+            plt.errorbar([hit.recox for hit in hits], [hit.recoy for hit in hits], xerr=[hiterr.x for hiterr in hiterrs],
                          yerr=[hiterr.y for hiterr in hiterrs], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
             for i in strip_positions:
                 plt.axhline(i, c="purple", alpha=0.2)
@@ -362,8 +373,8 @@ if __name__ == "__main__":
         if hits:
             all_hits += hits
     #np.save("allhits.npy", all_hits)
-    heatmap, xedges, yedges = np.histogram2d([hit.x for hit in all_hits], [
-                                             hit.y for hit in all_hits], bins=150, range=[[-150, 150], [0, 200]])
+    heatmap, xedges, yedges = np.histogram2d([hit.recox for hit in all_hits], [
+                                             hit.recoy for hit in all_hits], bins=150, range=[[-150, 150], [0, 200]])
     extent = [-150, 150, 0, 200]
     plt.clf()
     plt.imshow(heatmap.T, extent=extent, origin='lower')

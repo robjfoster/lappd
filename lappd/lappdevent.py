@@ -6,16 +6,18 @@ from typing import Dict, Generator, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
+from matplotlib import cm
 from mpl_toolkits import mplot3d
 
-from .matching import detect_peaks, match_peaks
-from .strip import StripEvent, StripPulse
-from .utils import gimmedatwave as gdw
-from .utils import lappdcfg as cfg
-from .utils.cxxbindings import caenreader
-from .utils.interpolation import interp_matrix
-from .utils.lappdcfg import allstrips
-from .utils.wiener import do_wiener
+from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks, match_peaks,
+                            transverse_position, x_to_t, y_to_loc)
+from lappd.strip import StripEvent, StripPulse
+from lappd.utils import gimmedatwave as gdw
+from lappd.utils import lappdcfg as cfg
+from lappd.utils.cxxbindings import caenreader
+from lappd.utils.interpolation import interp_matrix
+from lappd.utils.lappdcfg import allstrips
+from lappd.utils.wiener import do_wiener
 
 
 class BaseEvent(ABC):
@@ -51,6 +53,8 @@ class LAPPDEvent():
         self.interped = None
         self.peaks = None
         self.pairs = None
+        self.hits = None
+        self.hiterrors = None
 
     @classmethod
     def build(cls, stripfiles: Dict[int, Tuple[str, str]], event_no: int) -> "LAPPDEvent":
@@ -187,9 +191,9 @@ class LAPPDEvent():
                 breakpoint()
         return leftmatrix * -1, rightmatrix * -1
 
-    def reconstruct(self):
-        left_deconvolved = do_wiener(self.leftmatrix, template=cfg.TEMPLATE)
-        right_deconvolved = do_wiener(self.rightmatrix, template=cfg.TEMPLATE)
+    def reconstruct(self, plot=False):
+        left_deconvolved = do_wiener(self.leftmatrix, cfg.TEMPLATE)
+        right_deconvolved = do_wiener(self.rightmatrix, cfg.TEMPLATE)
         # Change this to dynamically calculate the number of strips to show
         left_interp = interp_matrix(left_deconvolved, startx=0, stopx=cfg.NSAMPLES -
                                     cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=10)
@@ -199,11 +203,118 @@ class LAPPDEvent():
         leftpeaks = detect_peaks(left_interp, threshold=cfg.MINHEIGHT)
         rightpeaks = detect_peaks(right_interp, threshold=cfg.MINHEIGHT)
         # Change this to allow for min likelihood (add to config)
-        pairs = match_peaks(leftpeaks, rightpeaks)
+        pairs, (left_unmatched, right_unmatched) = match_peaks(
+            leftpeaks, rightpeaks, left_interp, right_interp)
+        hits = []
+        hiterrs = []
+        for pair in pairs:
+            leftcfd = cfd_timestamp(left_interp, pair.left)
+            rightcfd = cfd_timestamp(right_interp, pair.right)
+            xpos, xposerr = transverse_position(
+                x_to_t(leftcfd), x_to_t(rightcfd))
+            ypos = y_to_loc((pair.left.y + pair.right.y) / 2.0)
+            recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
+                              2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
+            hiterr = Hit(xposerr, 5)
+            hits.append(recohit)
+            hiterrs.append(hiterr)
         self.deconvolved = (left_deconvolved, right_deconvolved)
         self.interped = (left_interp, right_interp)
         self.peaks = (leftpeaks, rightpeaks)
         self.pairs = pairs
+        self.hits = hits
+        self.hiterrors = hiterrs
+        if plot:
+            x = np.arange(0, 1014, 1)
+            y = np.arange(0, 8, 1)
+            xx, yy = np.meshgrid(x, y)
+            thismin = min((np.min(self.leftmatrix), np.min(self.rightmatrix)))
+            thismax = max((np.max(self.leftmatrix), np.max(self.rightmatrix)))
+            fig = plt.figure()
+            fig.suptitle(f"Event {levent.event_no}")
+            ax0 = fig.add_subplot(231, projection="3d")
+            ax1 = fig.add_subplot(232)
+            ax2 = fig.add_subplot(233)
+            ax3 = fig.add_subplot(234, projection="3d")
+            ax4 = fig.add_subplot(235)
+            ax5 = fig.add_subplot(236)
+            base_img = ax1.imshow(
+                self.leftmatrix[0:8], aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
+            ax4.imshow(self.rightmatrix[0:8], aspect="auto",
+                       interpolation="none", vmin=thismin, vmax=thismax)
+            ax2.imshow(left_interp[0:80],
+                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
+            ax5.imshow(right_interp[0:80],
+                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
+            surf1 = ax0.plot_surface(yy, xx, self.leftmatrix[0:8],
+                                     rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
+            surf2 = ax3.plot_surface(yy, xx, self.rightmatrix[0:8],
+                                     rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
+            ax0.set_title("Left, observed signal")
+            ax3.set_title("Right, observed signal")
+            ax1.set_title("Left, observed signal")
+            ax4.set_title("Right, observed signal")
+            ax2.set_title("Left, deconvolved, interpolated")
+            ax5.set_title("Right, deconvolved, interpolated")
+            # To set the axis ticks:
+            ax1.set_xticks(np.arange(0, 1014, 100))
+            ax1.set_xticklabels(np.arange(0, 210, 20))
+            ax1.set_yticks(np.arange(0, 8, 1))
+            ax1.set_yticklabels(np.arange(14, 6, -1))
+            ax4.set_xticks(np.arange(0, 1014, 100))
+            ax4.set_xticklabels(np.arange(0, 210, 20))
+            ax4.set_yticks(np.arange(0, 8, 1))
+            ax4.set_yticklabels(np.arange(14, 6, -1))
+            ax2.set_xticks(np.arange(0, 10140, 1000))
+            ax2.set_xticklabels(np.arange(0, 210, 20))
+            ax2.set_yticks(np.arange(0, 80, 10))
+            ax2.set_yticklabels(np.arange(14, 6, -1))
+            ax5.set_xticks(np.arange(0, 10140, 1000))
+            ax5.set_xticklabels(np.arange(0, 210, 20))
+            ax5.set_yticks(np.arange(0, 80, 10))
+            ax5.set_yticklabels(np.arange(14, 6, -1))
+            ax1.set_xlabel("Time (ns)")
+            ax1.set_ylabel("Stripnumber")
+            ax4.set_xlabel("Time (ns)")
+            ax4.set_ylabel("Stripnumber")
+            ax2.set_xlabel("Time (ns)")
+            ax2.set_ylabel("Stripnumber")
+            ax5.set_xlabel("Time (ns)")
+            ax5.set_ylabel("Stripnumber")
+            fig.colorbar(base_img, ax=[ax0, ax1, ax2, ax3, ax4, ax5],
+                         orientation="horizontal", fraction=0.016)
+            for i, pair in enumerate(pairs):
+                ax2.scatter(pair.left.x, pair.left.y,
+                            c="pink", s=25, marker="o")
+                ax5.scatter(pair.right.x, pair.right.y,
+                            c="pink", s=25, marker="o")
+                # , c="green", s=4, marker="x")
+                ax2.annotate(str(i), xy=(pair.left.x, pair.left.y), c="white")
+                # , c="green", s=4, marker="x")
+                ax5.annotate(str(i), xy=(
+                    pair.right.x, pair.right.y), c="white")
+            for lhit in left_unmatched:
+                ax2.scatter(lhit.x, lhit.y, c="red", s=25, marker="x")
+            for rhit in right_unmatched:
+                ax5.scatter(rhit.x, rhit.y, c="red", s=25, marker="x")
+            plt.show()
+
+    def plot_hits(self):
+        if not self.hits:
+            print("Need to run reconstruct() first")
+            return
+        strip_positions = y_to_loc(np.arange(0, 28, 1), interpfactor=1)
+        plt.errorbar([hit.recox for hit in self.hits], [hit.recoy for hit in self.hits], xerr=[hiterr.x for hiterr in self.hiterrors],
+                     yerr=[hiterr.y for hiterr in self.hiterrors], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
+        for i in strip_positions:
+            plt.axhline(i, c="purple", alpha=0.2)
+            plt.ylim(0, 200)
+            plt.xlim(-150, 150)
+            plt.xlabel("Horizontal position (mm)")
+            plt.ylabel("Vertical position (mm)")
+        for i, (xpos, ypos, _, _, _) in enumerate(self.hits):
+            plt.annotate(str(i), xy=(xpos+2.5, ypos+2.5), c="black")
+        plt.show()
 
     def plot_side(self, side, show=True) -> None:
         # Voltage is inverted!
@@ -459,24 +570,28 @@ if __name__ == "__main__":
     offsets = []
     cfpeaks = []
     for levent in LAPPDEvent.search_all(base_dir):
-        if levent.event_no % 100 == 0:
-            print(f"Analysing {levent.event_no}")
-        for strip, sevent in levent.stripevents.items():
-            for pulse in sevent.pulses:
-                print(f"Strip {strip}: Position: {pulse.position}")
+        if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
+            continue
+        if levent.event_no < 100:
+            continue
+        # for strip, sevent in levent.stripevents.items():
+        #     for pulse in sevent.pulses:
+        #         print(f"Strip {strip}: Position: {pulse.position}")
         levent.plot_both()
+        levent.reconstruct(plot=True)
+        levent.plot_hits()
         breakpoint()
-    for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
-        # psf = lpulses[0].leftmatrix[0:3, :]
-        # levent.set_rootfile("testfile.root")
-        # levent.write_root()
-        lpulses[0].centroid_height(plot=True)
-        for npulse in lpulses[0].strippulses:
-            pulse = lpulses[0].strippulses[npulse].left
-            if pulse.peak_present:
-                cfpeaks.append(abs(pulse.cfpeak - pulse.peaktime))
-    myhist = root.TH1D("hist", "hist", 35, 0.5, 1.6)
-    for value in cfpeaks:
-        myhist.Fill(value)
-    myhist.Draw()
+    # for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
+    #     # psf = lpulses[0].leftmatrix[0:3, :]
+    #     # levent.set_rootfile("testfile.root")
+    #     # levent.write_root()
+    #     lpulses[0].centroid_height(plot=True)
+    #     for npulse in lpulses[0].strippulses:
+    #         pulse = lpulses[0].strippulses[npulse].left
+    #         if pulse.peak_present:
+    #             cfpeaks.append(abs(pulse.cfpeak - pulse.peaktime))
+    # myhist = root.TH1D("hist", "hist", 35, 0.5, 1.6)
+    # for value in cfpeaks:
+    #     myhist.Fill(value)
+    # myhist.Draw()
     breakpoint()
