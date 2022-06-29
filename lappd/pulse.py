@@ -24,9 +24,9 @@ class Pulse():
             self.peak_present = True
             self.peaktime = self.smoothedtimes[self.peak]
             self.height = self.smoothedwave[self.peak]
-            self.cfpeak = su.cfd(self.smoothedwave, 0.2,
-                                 times=self.smoothedtimes, userpeak=self.peak)
-            if self.cfpeak is None:
+            self.cfpeak, status = su.cfd(self.smoothedwave, 0.2,
+                                         times=self.smoothedtimes, userpeak=self.peak)
+            if status is None:
                 self.peak_present = False
         else:
             self.peak_present = False

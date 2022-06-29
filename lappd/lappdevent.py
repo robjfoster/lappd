@@ -43,10 +43,15 @@ class LAPPDEvent():
 
     # Hold raw events for all strips
 
-    def __init__(self, stripevents: Dict[int, StripEvent], event_no: int = None) -> None:
+    def __init__(self,
+                 stripevents: Dict[int, StripEvent],
+                 event_no: int = None,
+                 trigevent=None
+                 ) -> None:
         self.stripevents = stripevents
         self.event_no = event_no
         self.leftmatrix, self.rightmatrix = self._build_matrix()
+        self.trigevent = trigevent
         self.rootfile = None
         # Available after running reconstruct()
         self.deconvolved = None
@@ -65,6 +70,24 @@ class LAPPDEvent():
             stripevent = StripEvent.build(leftfile, rightfile, event_no)
             stripevents[strip] = stripevent
         return cls(stripevents, event_no=event_no)
+
+    @classmethod
+    def build_raw(cls,
+                  stripfiles: Dict[int, Tuple[str, str]],
+                  event_no: int,
+                  trigger=None
+                  ) -> "LAPPDEvent":
+        """build_raw builds StripEvents without performing immediate analysis on waveforms"""
+        stripevents = {}
+        trigevent = None
+        for strip in stripfiles:
+            leftfile = stripfiles[strip][0]
+            rightfile = stripfiles[strip][1]
+            stripevent = StripEvent.build_raw(leftfile, rightfile, event_no)
+            stripevents[strip] = stripevent
+        if trigger:
+            trigevent = StripEvent.build(trigger, trigger, event_no)
+        return cls(stripevents, event_no=event_no, trigevent=trigevent)
 
     @classmethod
     def search_strip(cls, stripnumber: int, dir: str
@@ -101,6 +124,21 @@ class LAPPDEvent():
         print(f"Found {n_entries} events in this directory.")
         for event_no in range(n_entries):
             levent = cls.build(stripfiles, event_no)
+            yield levent
+
+    @classmethod
+    def itr_all_raw(cls, dir: str, trigger=None):
+        stripfiles = cls.get_stripfiles(dir)
+        trig_file = None
+        if trigger:
+            trig_file = gdw.get_filename(trigger, base=dir, prefix="TR_0")
+            n_entries = caenreader.getNumberEntries(trig_file)
+        else:
+            n_entries = caenreader.getNumberEntries(
+                list(stripfiles.values())[0][0])
+        print(f"Found {n_entries} events in this directory.")
+        for event_no in range(n_entries):
+            levent = cls.build_raw(stripfiles, event_no, trigger=trig_file)
             yield levent
 
     @staticmethod

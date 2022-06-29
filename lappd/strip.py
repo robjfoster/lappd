@@ -71,7 +71,8 @@ class StripEvent():
                  rightwaveform,
                  event_no: int = None,
                  cfg=cfg,
-                 peaks: List[int] = None
+                 peaks: List[int] = None,
+                 analyse: bool = True
                  ) -> None:
 
         # Raw Event information for each strip
@@ -85,30 +86,31 @@ class StripEvent():
         self.event_no = event_no
         self.cfg = cfg  # Or just use global?
         # The peaks for each PAIR of Pulses
-        self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
-        self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
-        if peaks is None:
-            self._peaks, self.coarse_offsets = self.coarse_correlate(
-                cfg.MAXOFFSET)
-            self.triggered = True
-        else:
-            self._peaks = peaks
-            self.coarse_offsets = None
-            self.triggered = False
-        if self._peaks:
-            self.passed = True
-        else:
-            self.passed = False
-        self.pulses = []
-        self.offsets = []
-        for peak in self._peaks:
-            # Should both waves be sliced at the same point? i.e. midpoint between two peaks
-            if self.triggered:
-                self.search_pulse(
-                    int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
+        if analyse:
+            self.leftpeaks, self.rightpeaks = self._find_peaks_custom()
+            self.leftpeak_heights, self.rightpeak_heights = self._find_peak_heights()
+            if peaks is None:
+                self._peaks, self.coarse_offsets = self.coarse_correlate(
+                    cfg.MAXOFFSET)
+                self.triggered = True
             else:
-                self.add_pulse(
-                    int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
+                self._peaks = peaks
+                self.coarse_offsets = None
+                self.triggered = False
+            if self._peaks:
+                self.passed = True
+            else:
+                self.passed = False
+            self.pulses = []
+            self.offsets = []
+            for peak in self._peaks:
+                # Should both waves be sliced at the same point? i.e. midpoint between two peaks
+                if self.triggered:
+                    self.search_pulse(
+                        int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
+                else:
+                    self.add_pulse(
+                        int((peak[0] + peak[1]) / 2), cfg.LOOKBACK, cfg.LOOKFORWARD)
 
     @classmethod
     def build(cls, leftfile: str, rightfile: str, event_no: int
@@ -118,6 +120,15 @@ class StripEvent():
         caenreader.preprocessWave(leftwave)
         caenreader.preprocessWave(rightwave)
         return cls(leftwave, rightwave, event_no=event_no)
+
+    @classmethod
+    def build_raw(cls, leftfile: str, rightfile: str, event_no: int
+                  ) -> "StripEvent":
+        leftwave = caenreader.readCAENWave(leftfile, event_no)
+        rightwave = caenreader.readCAENWave(rightfile, event_no)
+        caenreader.preprocessWave(leftwave)
+        caenreader.preprocessWave(rightwave)
+        return cls(leftwave, rightwave, event_no=event_no, analyse=False)
 
     @classmethod
     def itr_file(cls, stripnumber: int, dir: str

@@ -34,7 +34,7 @@ def x_to_t(x, interpfactor=10.0):
 
 def y_to_loc(y, interpfactor=10.0):
     strip = y / interpfactor
-    return 200 - ((cfg.STRIPWIDTH * (strip+1)) + cfg.STRIPSPACING)
+    return 200 - ((cfg.STRIPWIDTH * (strip+1)) + (cfg.STRIPSPACING/2.0))
 
 
 def z_to_ampl(z):
@@ -52,8 +52,8 @@ def transverse_position(lefttime, righttime):
 
 def cfd_timestamp(matrix: np.ndarray, hit: Hit3D):
     strippulse = matrix[hit.y]
-    timestamp = su.cfd(strippulse*-1, 0.2, userpeak=hit.x)
-    return timestamp
+    timestamp, status = su.cfd(strippulse*-1, 0.2, userpeak=hit.x)
+    return timestamp, status
 
 
 def get_centroid(matrix: np.ndarray, hit: Hit3D, width: int = 10) -> float:
@@ -173,10 +173,10 @@ def match_peaks(leftpeaks: np.ndarray,
             np.argmax(mod_likelihood), mod_likelihood.shape)
         # Find value of likelihood at this index
         max_like = mod_likelihood[pair[0], pair[1]]
-        #print(f'Max likelihood: {max_like}')
+        # print(f'Max likelihood: {max_like}')
         # Compare to our likelihood limit
         if max_like < min_like:
-            #print(f"Last likelihood value: {max_like}")
+            # print(f"Last likelihood value: {max_like}")
             break
         # If it passes, keep it
         thispair = Pair(leftpeaks[pair[0]], rightpeaks[pair[1]])
@@ -219,13 +219,19 @@ if __name__ == "__main__":
     unfancy_plot = False
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
-    for levent in LAPPDEvent.itr_all(base_dir):
-        if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
+    eventcount = 0
+    for levent in LAPPDEvent.itr_all_raw(base_dir):
+        if np.max(levent.leftmatrix) > 70 \
+                or np.max(levent.rightmatrix) > 70 \
+                or np.max(levent.leftmatrix) < 2 \
+                or np.max(levent.rightmatrix) < 2:
             continue
-        # if levent.event_no > 5000:
-        #     break
+        if levent.event_no > 1000:
+            break
+        breakpoint()
         template = np.load("template2d.npy")
         print(f"Event number: {levent.event_no}")
+        eventcount += 1
         left = levent.leftmatrix
         right = levent.rightmatrix
         thismin = min((np.min(left), np.min(right)))
@@ -335,8 +341,11 @@ if __name__ == "__main__":
             # lpairy = leftpeaks[pair[0]][0]
             # rpairx = rightpeaks[pair[1]][1]
             # rpairy = rightpeaks[pair[1]][0]
-            leftcfd = cfd_timestamp(leftcleaninterp, pair.left)
-            rightcfd = cfd_timestamp(rightcleaninterp, pair.right)
+            leftcfd, leftstatus = cfd_timestamp(leftcleaninterp, pair.left)
+            rightcfd, rightstatus = cfd_timestamp(rightcleaninterp, pair.right)
+            if leftstatus is False or rightstatus is False:
+                print("Skipped due to CFD failure")
+                continue
             xpos, xposerr = transverse_position(
                 x_to_t(leftcfd), x_to_t(rightcfd))
             ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
@@ -385,6 +394,8 @@ if __name__ == "__main__":
             plt.show()
         if hits:
             all_hits += hits
+    print("Total hits: ", len(all_hits))
+    print("Total events analysed: ", eventcount)
     np.save("allhits.npy", all_hits)
-    plot_hitmap(all_hits, bins=300)
+    plot_hitmap(all_hits, bins=100)
     breakpoint()
