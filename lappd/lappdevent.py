@@ -9,7 +9,7 @@ import ROOT as root
 from matplotlib import cm
 from mpl_toolkits import mplot3d
 
-from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks, match_peaks,
+from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks, get_centroid, match_peaks,
                             transverse_position, x_to_t, y_to_loc)
 from lappd.strip import StripEvent, StripPulse
 from lappd.utils import gimmedatwave as gdw
@@ -234,9 +234,9 @@ class LAPPDEvent():
         right_deconvolved = do_wiener(self.rightmatrix, cfg.TEMPLATE)
         # Change this to dynamically calculate the number of strips to show
         left_interp = interp_matrix(left_deconvolved, startx=0, stopx=cfg.NSAMPLES -
-                                    cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=10)
+                                    cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=cfg.INTERPFACTOR)
         right_interp = interp_matrix(right_deconvolved, startx=0, stopx=cfg.NSAMPLES -
-                                     cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=10)
+                                     cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=cfg.INTERPFACTOR)
         # Change this to also account for minimum distance
         leftpeaks = detect_peaks(left_interp, threshold=cfg.MINHEIGHT)
         rightpeaks = detect_peaks(right_interp, threshold=cfg.MINHEIGHT)
@@ -249,8 +249,10 @@ class LAPPDEvent():
             leftcfd = cfd_timestamp(left_interp, pair.left)
             rightcfd = cfd_timestamp(right_interp, pair.right)
             xpos, xposerr = transverse_position(
-                x_to_t(leftcfd), x_to_t(rightcfd))
-            ypos = y_to_loc((pair.left.y + pair.right.y) / 2.0)
+                x_to_t(leftcfd, interpfactor=cfg.INTERPFACTOR),
+                x_to_t(rightcfd, interpfactor=cfg.INTERPFACTOR))
+            ypos = y_to_loc(get_centroid(left_interp, pair.left) +
+                            get_centroid(right_interp, pair.right) / 2.0, interpfactor=cfg.INTERPFACTOR)
             recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hiterr = Hit(xposerr, 5)
