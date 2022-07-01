@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
 
-from .lappdevent import LAPPDEvent
-from .strip import StripEvent
-from .utils import lappdcfg as cfg
+from lappd.lappdevent import LAPPDEvent
+from lappd.strip import StripEvent
+from lappd.utils import lappdcfg as cfg
 
 base_dir = sys.argv[1]
 stripnumber = int(sys.argv[2])

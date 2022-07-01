@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
-from .utils import lappdcfg as cfg
-from .utils import sigutils as su
-from .utils.lognormal import LogNormal, root_ln
+from lappd.utils import lappdcfg as cfg
+from lappd.utils import sigutils as su
+from lappd.utils.lognormal import LogNormal, root_ln
 
 
 class Pulse():

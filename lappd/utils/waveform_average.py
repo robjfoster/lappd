@@ -3,7 +3,7 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..lappdevent import LAPPDEvent
+from lappd.lappdevent import LAPPDEvent
 
 base_dir = sys.argv[1]
 stripnumber = int(sys.argv[2])

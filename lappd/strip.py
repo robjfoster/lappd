@@ -5,10 +5,10 @@ from typing import Generator, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .pulse import Pulse
-from .utils import gimmedatwave as gdw
-from .utils import lappdcfg as cfg
-from .utils.cxxbindings import caenreader
+from lappd.pulse import Pulse
+from lappd.utils import gimmedatwave as gdw
+from lappd.utils import lappdcfg as cfg
+from lappd.utils.cxxbindings import caenreader
 
 
 class StripPulse():

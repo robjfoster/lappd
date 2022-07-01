@@ -6,8 +6,8 @@ from contextlib import ExitStack
 import matplotlib.pyplot as plt
 import numpy as np
 
-from utils import gimmedatwave as gdw
-from utils import sigutils as su
+from lappd.utils import gimmedatwave as gdw
+from lappd.utils import sigutils as su
 
 try:
     base_directory = sys.argv[1]

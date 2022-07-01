@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import erf
-from . import lappdcfg as cfg
+from lappd.utils import lappdcfg as cfg
 
 
 class PDF:

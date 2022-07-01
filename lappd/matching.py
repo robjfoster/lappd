@@ -9,8 +9,8 @@ from lappd.utils.lognormal import lngaus2D
 
 import lappd.utils.sigutils as su
 
-from .utils import lappdcfg as cfg
-from .utils.pdf import AmplPDF, LocPDF, TimePDF
+from lappd.utils import lappdcfg as cfg
+from lappd.utils.pdf import AmplPDF, LocPDF, TimePDF
 
 Hit = namedtuple("Hit", "x y")
 Hit3D = namedtuple("Hit3D", "x y z")

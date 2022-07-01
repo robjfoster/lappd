@@ -10,7 +10,7 @@ import ROOT as root
 from scipy import interpolate, signal
 from scipy.stats import moyal
 
-from . import gimmedatwave as gdw
+from lappd.utils import gimmedatwave as gdw
 
 
 def mv_to_adc(millivolts: float, bit_r: int = 12) -> float:
