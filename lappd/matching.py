@@ -218,18 +218,18 @@ if __name__ == "__main__":
     from lappd.utils.wiener import do_wiener
     all_hits = []
     all_times = []
-    fancy_plot = True
+    fancy_plot = False
     unfancy_plot = False
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
     eventcount = 0
     for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
-        if np.max(levent.leftmatrix) > 70 \
-                or np.max(levent.rightmatrix) > 70 \
-                or np.max(levent.leftmatrix) < 2 \
-                or np.max(levent.rightmatrix) < 2:
+        if su.threshold(levent.leftmatrix, 70, polarity="positive") \
+                or su.threshold(levent.rightmatrix, 70, polarity="positive") \
+                or not su.threshold(levent.leftmatrix, 2, polarity="positive") \
+                or not su.threshold(levent.rightmatrix, 2, polarity="positive"):
             continue
-        if levent.event_no > 5000:
+        if levent.event_no > 1000:
             break
         template = np.load("template2d.npy")
         temp1d = np.load("template.npy")
@@ -398,7 +398,6 @@ if __name__ == "__main__":
             plt.xlabel("Horizontal position (mm)")
             plt.ylabel("Vertical position (mm)")
             plt.show()
-        breakpoint()
         if hits:
             all_hits += hits
         if times:
