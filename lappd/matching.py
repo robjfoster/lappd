@@ -4,11 +4,13 @@ from typing import List, Tuple
 
 import numpy as np
 from skimage.feature import peak_local_max
+from lappd.utils.interpolation import gaussMM, image_gaussian
+from lappd.utils.lognormal import lngaus2D
+
+import lappd.utils.sigutils as su
 
 from .utils import lappdcfg as cfg
 from .utils.pdf import AmplPDF, LocPDF, TimePDF
-import lappd.utils.sigutils as su
-
 
 Hit = namedtuple("Hit", "x y")
 Hit3D = namedtuple("Hit3D", "x y z")
@@ -215,7 +217,7 @@ if __name__ == "__main__":
     from lappd.utils import interpolation
     from lappd.utils.wiener import do_wiener
     all_hits = []
-    fancy_plot = False
+    fancy_plot = True
     unfancy_plot = False
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
@@ -230,6 +232,7 @@ if __name__ == "__main__":
             break
         breakpoint()
         template = np.load("template2d.npy")
+        temp1d = np.load("template.npy")
         print(f"Event number: {levent.event_no}")
         eventcount += 1
         left = levent.leftmatrix
@@ -241,7 +244,7 @@ if __name__ == "__main__":
         leftcleaninterp = interpolation.interp_matrix(leftclean)
         rightcleaninterp = interpolation.interp_matrix(rightclean)
         leftpeaks = detect_peaks(
-            leftcleaninterp, threshold=6, exclude_border=(3, 3))
+            leftcleaninterp, threshold=cfg.MINHEIGHT, exclude_border=(3, 3))
         rightpeaks = detect_peaks(
             rightcleaninterp, threshold=cfg.MINHEIGHT, exclude_border=(3, 3))
         pairs, unmatched = match_peaks(
@@ -325,7 +328,6 @@ if __name__ == "__main__":
             fig.colorbar(base_img, ax=ax.ravel().tolist(),
                          orientation="horizontal", fraction=0.046, anchor=(1.0, 0.0))
             fig.suptitle(f"Event {levent.event_no}")
-            # plt.imshow(leftinterp, aspect="auto")
             for peak in leftpeaks:
                 if peak[0] < 3:
                     continue
@@ -392,6 +394,7 @@ if __name__ == "__main__":
             plt.xlabel("Horizontal position (mm)")
             plt.ylabel("Vertical position (mm)")
             plt.show()
+        breakpoint()
         if hits:
             all_hits += hits
     print("Total hits: ", len(all_hits))

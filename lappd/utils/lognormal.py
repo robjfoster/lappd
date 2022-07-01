@@ -127,6 +127,52 @@ def lnfit4(lpulse, upsample_rate=10, debug=True):
     return
 
 
+def lngaus2D(slicedmatrix):
+    # 50 to 120, 21 to 26
+    c2 = root.TCanvas("c", "c")
+    lognormal = LogNormal()
+    slicedmatrix = slicedmatrix[2:7, 90:140]
+    m, n = slicedmatrix.shape
+    tf2 = root.TF2(
+        "f2", "[0]*TMath::Gaus(x,[1],[2])*TMath::Gaus(y,[3],[4])", 0, m, 0, n)
+    # bigaus = root.TF2("bigauss", "bigaus")
+    # bigaus.SetParameters(7.0, 25.0, 1.0, 25.0, 1.0, 0.1)
+    # bigaus.SetParLimits(0, 6, 8)
+    # bigaus.SetParLimits(1, 15, 30)
+    # bigaus.SetParLimits(2, 0.1, 2)
+    # bigaus.SetParLimits(3, 24.5, 27)
+    # bigaus.SetParLimits(4, 0.1, 3)
+    # bigaus.SetParLimits(5, 0.0001, 2)
+    tf2.SetParameters(7.0, 25.0, 5.0, 25.0, 1.0)
+    tf2.SetParLimits(0, 6.0, 8.0)
+    tf2.SetParLimits(1, 20.0, 30.0)
+    tf2.SetParLimits(2, 1.0, 5)
+    tf2.SetParLimits(3, 24.0, 26.0)
+    tf2.SetParLimits(4, 1.0, 5.0)
+    rows, cols = np.mgrid[:m, :n]
+    points = np.column_stack(
+        (cols.ravel(), rows.ravel(), slicedmatrix.ravel()))
+    xs = np.asarray(points[:, 0])
+    ys = np.asarray(28 - points[:, 1])
+    zs = np.asarray(points[:, 2])
+    xerrs = np.array([0.025 for i in xs])
+    yerrs = np.array([0.25 for i in ys])
+    zerrs = np.array([0.01 for i in zs])
+    gr = root.TGraph2DErrors(len(points),
+                             xs.astype("float64"),
+                             ys.astype("float64"),
+                             zs.astype("float64"),
+                             xerrs.astype("float64"),
+                             yerrs.astype("float64"),
+                             zerrs.astype("float64"))
+    gr.Fit(tf2, "V")
+    gr.Draw("surf0")
+    tf2.Draw("same surf")
+    c2.Draw()
+    breakpoint()
+    # Now multiply together a ln fit in x and gaus fit in y
+
+
 if __name__ == "__main__":
     tvals = np.arange(0.2, 30, 0.2)
     # breakpoint()

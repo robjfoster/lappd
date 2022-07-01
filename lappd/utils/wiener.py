@@ -7,8 +7,12 @@ def wiener_deconv(matrix, psf, balance=0.1):
     return deconved
 
 
-def do_wiener(matrix: np.ndarray, psf: np.ndarray, balance: float = 0.1):
+def do_wiener(matrix: np.ndarray, psf: np.ndarray, balance: float = 0.1, plot=False):
     deconved = wiener(matrix, psf, balance)
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.imshow(deconved, aspect="auto")
+        plt.show()
     return deconved * matrix
 
 
@@ -29,6 +33,7 @@ if __name__ == "__main__":
     template2d[15, 492:522] = template * 0.15 * 0.15
     template2d *= -1
     print(template)
+    breakpoint()
     newx = np.arange(0, 1013, 0.1)
     newy = np.arange(0, 27, 0.1)
     newnewx, newnewy = np.meshgrid(newx, newy)
