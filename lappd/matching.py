@@ -217,20 +217,20 @@ if __name__ == "__main__":
     from lappd.utils import interpolation
     from lappd.utils.wiener import do_wiener
     all_hits = []
+    all_times = []
     fancy_plot = True
     unfancy_plot = False
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
     eventcount = 0
-    for levent in LAPPDEvent.itr_all_raw(base_dir):
+    for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
         if np.max(levent.leftmatrix) > 70 \
                 or np.max(levent.rightmatrix) > 70 \
                 or np.max(levent.leftmatrix) < 2 \
                 or np.max(levent.rightmatrix) < 2:
             continue
-        if levent.event_no > 1000:
+        if levent.event_no > 5000:
             break
-        breakpoint()
         template = np.load("template2d.npy")
         temp1d = np.load("template.npy")
         print(f"Event number: {levent.event_no}")
@@ -337,6 +337,7 @@ if __name__ == "__main__":
                     continue
                 ax[1, 1].scatter(peak[1], peak[0], c="red", s=5, marker="x")
         hits = []
+        times = []
         hiterrs = []
         for i, pair in enumerate(pairs):
             # lpairx = leftpeaks[pair[0]][1]
@@ -345,6 +346,8 @@ if __name__ == "__main__":
             # rpairy = rightpeaks[pair[1]][0]
             leftcfd, leftstatus = cfd_timestamp(leftcleaninterp, pair.left)
             rightcfd, rightstatus = cfd_timestamp(rightcleaninterp, pair.right)
+            trigger_time = levent.trigevent.pulses[0].left.cfpeak
+            event_time = x_to_t(((leftcfd + rightcfd) / 2.0)) - trigger_time
             if leftstatus is False or rightstatus is False:
                 print("Skipped due to CFD failure")
                 continue
@@ -357,6 +360,7 @@ if __name__ == "__main__":
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hits.append(recohit)
             hiterrs.append(Hit(xposerr, 5))
+            times.append(event_time)
         if fancy_plot:
             # Plot the matched peaks as pink circles and number them
             for i, pair in enumerate(pairs):
@@ -397,6 +401,8 @@ if __name__ == "__main__":
         breakpoint()
         if hits:
             all_hits += hits
+        if times:
+            all_times += times
     print("Total hits: ", len(all_hits))
     print("Total events analysed: ", eventcount)
     np.save("allhits.npy", all_hits)
