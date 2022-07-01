@@ -85,8 +85,8 @@ def find_wave(f, bytes_to_seek, hsize=6, rsize=1024, hdtype=np.int32, wdtype=np.
     return header, wave
 
 
-def get_filename(daqchannel, base=""):
-    filename = base + f"wave_{daqchannel}.dat"
+def get_filename(daqchannel, base="", prefix="wave_"):
+    filename = base + f"{prefix}{daqchannel}.dat"
     if not os.path.exists(filename):
         raise FileNotFoundError(f"Could not find {filename}")
     return filename
