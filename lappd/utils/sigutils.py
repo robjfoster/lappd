@@ -218,7 +218,8 @@ def rise_time(wave: np.ndarray, time: float, condition: str = "less",
         return False
 
 
-def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethresh=1):
+def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethresh=3):
+    countabovethresh = 0
     peak_sample = np.argmin(wave) if not userpeak else userpeak
     # print(peak_sample)
     peak_value = wave[peak_sample]
@@ -227,14 +228,21 @@ def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethres
     thresh_sample = None
     for i, sample in enumerate(beforepeak[::-1]):
         if sample > threshold:
-            if np.all(beforepeak[i:i+samplesabovethresh] > threshold):
+            if countabovethresh == 0:
                 thresh_sample = peak_sample - i
-                # thresh_sample = ((peak_sample - i) +
-                #                  (peak_sample - (i+1))) / 2.0
+            countabovethresh += 1
+            if countabovethresh >= samplesabovethresh:
                 break
+        else:
+            countabovethresh = 0
+            thresh_sample = None
+            # if np.all(beforepeak[i:i+samplesabovethresh] > threshold):
+            #     thresh_sample = peak_sample - i
+            #     # thresh_sample = ((peak_sample - i) +
+            #     #                  (peak_sample - (i+1))) / 2.0
+            #     break
     if thresh_sample is None or (peak_sample + samplesabovethresh > len(wave)):
-        print("CFD did not work!")
-        return userpeak if userpeak else peak_sample
+        return userpeak if userpeak else peak_sample, False
     if plot and thresh_sample:
         plt.plot(wave, "x", linestyle="-", markersize=1)
         plt.axvline(thresh_sample, c="g")
@@ -244,9 +252,9 @@ def cfd(wave, fraction, times=None, userpeak=None, plot=False, samplesabovethres
         plt.ylabel("Amplitude (mV)")
         plt.show()
     if times is None:
-        return thresh_sample
+        return thresh_sample, True
     else:
-        return (times[thresh_sample] + times[thresh_sample + 1]) / 2.0
+        return (times[thresh_sample] + times[thresh_sample + 1]) / 2.0, True
 
 
 def minmax(wave: np.ndarray, max_minus_min: float, condition: str = "greater") -> bool:
