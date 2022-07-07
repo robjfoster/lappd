@@ -19,6 +19,7 @@ from lappd.utils.cxxbindings import caenreader
 from lappd.utils.interpolation import interp_matrix
 from lappd.utils.lappdcfg import allstrips
 from lappd.utils.pycaenwave import pyCAENHeader, pyCAENWave
+from lappd.utils.roothist import roothist
 from lappd.utils.wiener import do_wiener
 
 
@@ -678,4 +679,5 @@ if __name__ == "__main__":
     # for value in cfpeaks:
     #     myhist.Fill(value)
     # myhist.Draw()
+    roothist(times, 1)
     breakpoint()
