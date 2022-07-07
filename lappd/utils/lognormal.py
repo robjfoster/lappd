@@ -1,7 +1,7 @@
-import numpy as np
-from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+import numpy as np
 import ROOT as root
+from scipy.optimize import curve_fit
 
 
 def lognormal(t, B, Q, t0, m, sigma):

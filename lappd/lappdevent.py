@@ -9,15 +9,16 @@ import ROOT as root
 from matplotlib import cm
 from mpl_toolkits import mplot3d
 
-from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks, get_centroid, match_peaks,
-                            transverse_position, x_to_t, y_to_loc)
+from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks,
+                            get_centroid, match_peaks, transverse_position,
+                            x_to_t, y_to_loc)
 from lappd.strip import StripEvent, StripPulse
 from lappd.utils import gimmedatwave as gdw
 from lappd.utils import lappdcfg as cfg
 from lappd.utils.cxxbindings import caenreader
 from lappd.utils.interpolation import interp_matrix
 from lappd.utils.lappdcfg import allstrips
-from lappd.utils.roothist import roothist
+from lappd.utils.pycaenwave import pyCAENHeader, pyCAENWave
 from lappd.utils.wiener import do_wiener
 
 
@@ -71,6 +72,26 @@ class LAPPDEvent():
             stripevent = StripEvent.build(leftfile, rightfile, event_no)
             stripevents[strip] = stripevent
         return cls(stripevents, event_no=event_no)
+
+    @classmethod
+    def build_from_matrix(cls, leftmatrix: np.ndarray, rightmatrix: np.ndarray) -> "LAPPDEvent":
+        # As it stands, only works if matrices have shape (28, 1014)
+        dummy_header = pyCAENHeader(0, 0, 0, 0, 0, 0)
+        times = np.arange(cfg.NS_PER_SAMPLE, (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) *
+                          cfg.NS_PER_SAMPLE, cfg.NS_PER_SAMPLE)
+        stripevents = {}
+        for i, strip in enumerate(range(14, -15, -1)):
+            if strip == 0:
+                continue
+            if strip > 0:
+                index = i
+            else:
+                index = i-1
+            leftwave = pyCAENWave(dummy_header, leftmatrix[index], times, 0)
+            rightwave = pyCAENWave(dummy_header, rightmatrix[index], times, 0)
+            stripevent = StripEvent(leftwave, rightwave, analyse=False)
+            stripevents[strip] = stripevent
+        return cls(stripevents, event_no=0)
 
     @classmethod
     def build_raw(cls,
@@ -657,5 +678,4 @@ if __name__ == "__main__":
     # for value in cfpeaks:
     #     myhist.Fill(value)
     # myhist.Draw()
-    roothist(times, 1)
     breakpoint()

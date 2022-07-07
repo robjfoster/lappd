@@ -76,7 +76,6 @@ class StripEvent():
                  ) -> None:
 
         # Raw Event information for each strip
-
         self.rawleftwaveform = leftwaveform
         self.leftwaveform = np.asarray(leftwaveform.wave)
         self.lefttimes = np.asarray(self.rawleftwaveform.times)

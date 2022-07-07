@@ -55,6 +55,15 @@ class AmplPDF(PDF):
         return ((1 / (self.var * np.sqrt(2 * np.pi))) * np.exp(-(value)**2 / (2 * self.var**2)))
 
 
+class ChargeSharePDF(PDF):
+
+    def __init__(self, var, start, end, npoints) -> None:
+        super().__init__(var, start, end, npoints)
+
+    def func(self, value):
+        return ((1 / (self.var * np.sqrt(2 * np.pi))) * np.exp(-(value)**2 / (2 * self.var**2)))
+
+
 if __name__ == "__main__":
     timepdf = TimePDF(0.1, 0, 2, 1000)
     locpdf = LocPDF(0.3, 0, 20, 1000)
