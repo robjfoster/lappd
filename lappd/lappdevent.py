@@ -17,6 +17,7 @@ from lappd.utils import lappdcfg as cfg
 from lappd.utils.cxxbindings import caenreader
 from lappd.utils.interpolation import interp_matrix
 from lappd.utils.lappdcfg import allstrips
+from lappd.utils.roothist import roothist
 from lappd.utils.wiener import do_wiener
 
 
@@ -246,8 +247,11 @@ class LAPPDEvent():
         hits = []
         hiterrs = []
         for pair in pairs:
-            leftcfd = cfd_timestamp(left_interp, pair.left)
-            rightcfd = cfd_timestamp(right_interp, pair.right)
+            leftcfd, leftstatus = cfd_timestamp(left_interp, pair.left)
+            rightcfd, rightstatus = cfd_timestamp(right_interp, pair.right)
+            if leftstatus is False or rightstatus is False:
+                print("Skipped due to CFD failure")
+                continue
             xpos, xposerr = transverse_position(
                 x_to_t(leftcfd, interpfactor=cfg.INTERPFACTOR),
                 x_to_t(rightcfd, interpfactor=cfg.INTERPFACTOR))
@@ -355,6 +359,26 @@ class LAPPDEvent():
         for i, (xpos, ypos, _, _, _) in enumerate(self.hits):
             plt.annotate(str(i), xy=(xpos+2.5, ypos+2.5), c="black")
         plt.show()
+
+    def calculate_trigger_times(self):
+        times = []
+        if not self.hits:
+            # print("No reconstructed hits")
+            return times
+        if not self.trigevent:
+            print("No trigger event")
+            return times
+        if not self.trigevent.pulses:
+            print("Did not find any pulses in this trigger event")
+            return times
+        try:
+            trigger_time = self.trigevent.pulses[0].left.cfpeak
+        except IndexError:
+            breakpoint()
+        for hit in self.hits:
+            event_time = x_to_t(hit.x) - trigger_time
+            times.append(event_time)
+        return times
 
     def plot_side(self, side, show=True) -> None:
         # Voltage is inverted!
@@ -609,18 +633,17 @@ if __name__ == "__main__":
     rheights = []
     offsets = []
     cfpeaks = []
-    for levent in LAPPDEvent.search_all(base_dir):
+    times = []
+    for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
         if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
             continue
-        if levent.event_no < 100:
-            continue
+        # if levent.event_no > 10000:
+        #     break
         # for strip, sevent in levent.stripevents.items():
         #     for pulse in sevent.pulses:
         #         print(f"Strip {strip}: Position: {pulse.position}")
-        levent.plot_both()
-        levent.reconstruct(plot=True)
-        levent.plot_hits()
-        breakpoint()
+        levent.reconstruct()
+        times += levent.calculate_trigger_times()
     # for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
     #     # psf = lpulses[0].leftmatrix[0:3, :]
     #     # levent.set_rootfile("testfile.root")
@@ -634,4 +657,5 @@ if __name__ == "__main__":
     # for value in cfpeaks:
     #     myhist.Fill(value)
     # myhist.Draw()
+    roothist(times, 1)
     breakpoint()

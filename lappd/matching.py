@@ -194,14 +194,14 @@ def match_peaks(leftpeaks: np.ndarray,
     right_unmatched = []
     for i in unmatched[1]:
         right_unmatched.append(rightpeaks[i])
-    print(f"Matched {len(pairs)} pairs")
+    #print(f"Matched {len(pairs)} pairs")
     left_unmatched = list(set(left_unmatched))
     right_unmatched = list(set(right_unmatched))
-    if len(left_unmatched) == 0 and len(right_unmatched) == 0:
-        print("All pairs matched")
-    else:
-        print(f"{len(left_unmatched)} left hit unmatched")
-        print(f"{len(right_unmatched)} right hit unmatched")
+    # if len(left_unmatched) == 0 and len(right_unmatched) == 0:
+    #     print("All pairs matched")
+    # else:
+    #     print(f"{len(left_unmatched)} left hit unmatched")
+    #     print(f"{len(right_unmatched)} right hit unmatched")
     return pairs, (left_unmatched, right_unmatched)
 
 
