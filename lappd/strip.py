@@ -8,6 +8,7 @@ import numpy as np
 from lappd.pulse import Pulse
 from lappd.utils import gimmedatwave as gdw
 from lappd.utils import lappdcfg as cfg
+from lappd.utils import sigutils as su
 from lappd.utils.cxxbindings import caenreader
 
 
@@ -146,6 +147,24 @@ class StripEvent():
         print(f"{leftentries} entries for this strip.")
         for entry in range(leftentries):
             yield cls.build(leftfile, rightfile, entry)
+
+    @classmethod
+    def itr_file_raw(cls, stripnumber: int, dir: str
+                     ) -> Generator["StripEvent", None, None]:
+        """Yields all events in a file from a single strip. Finds files from dir."""
+        leftchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"L"]
+        leftfile = gdw.get_filename(leftchannel, base=dir)
+        rightchannel = cfg.config['STRIPTODAQ'][str(stripnumber)+"R"]
+        rightfile = gdw.get_filename(rightchannel, base=dir)
+        leftentries = caenreader.getNumberEntries(leftfile)
+        rightentries = caenreader.getNumberEntries(rightfile)
+        print(f"Left channel file: {leftfile}")
+        print(f"Right channel file: {rightfile}")
+        if leftentries != rightentries:
+            sys.exit("Each side of strip does not have same number of entries")
+        print(f"{leftentries} entries for this strip.")
+        for entry in range(leftentries):
+            yield cls.build_raw(leftfile, rightfile, entry)
 
     def _find_peaks_custom(self) -> Tuple[np.ndarray, np.ndarray]:
         # print("Finding left peaks")

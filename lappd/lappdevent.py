@@ -9,9 +9,10 @@ import ROOT as root
 from matplotlib import cm
 from mpl_toolkits import mplot3d
 
+import lappd.utils.sigutils as su
 from lappd.matching import (Hit, RecoHit, cfd_timestamp, detect_peaks,
-                            get_centroid, match_peaks, transverse_position,
-                            x_to_t, y_to_loc)
+                            get_centroid, match_peaks, plot_hitmap,
+                            transverse_position, x_to_t, y_to_loc)
 from lappd.strip import StripEvent, StripPulse
 from lappd.utils import gimmedatwave as gdw
 from lappd.utils import lappdcfg as cfg
@@ -187,6 +188,9 @@ class LAPPDEvent():
                 sys.exit("Each side of strip does not have same number of entries")
             print(f"{leftentries} entries for this strip.")
             stripfiles[stripnumber] = (leftfile, rightfile)
+        if not stripfiles:
+            raise FileNotFoundError(
+                f"Could not find any data files in this directory: {dir}")
         return stripfiles
 
     @classmethod
@@ -390,15 +394,26 @@ class LAPPDEvent():
         if not self.trigevent:
             print("No trigger event")
             return times
-        if not self.trigevent.pulses:
-            print("Did not find any pulses in this trigger event")
+        # if not self.trigevent.pulses:
+        #     print("Did not find any pulses in this trigger event")
+        #     breakpoint()
+        #     return times
+        # try:
+        #     trigger_time = self.trigevent.pulses[0].left.cfpeak
+        # except IndexError:
+        #     pass
+        cfd_result = su.cfd(self.trigevent.leftwaveform, 0.2)
+        # print("trigger pulse height: ",
+        #      self.trigevent.leftwaveform[cfd_result[0]])
+        # self.trigevent.plot_raw()
+        # and self.trigevent.leftwaveform[cfd_result[0]] < -10:
+        if cfd_result[1] and self.trigevent.leftwaveform[cfd_result[0]] < -4.0:
+            trigger_time = cfd_result[0] * cfg.NS_PER_SAMPLE
+        else:
             return times
-        try:
-            trigger_time = self.trigevent.pulses[0].left.cfpeak
-        except IndexError:
-            breakpoint()
         for hit in self.hits:
-            event_time = x_to_t(hit.x) - trigger_time
+            event_time = x_to_t(
+                hit.x, interpfactor=cfg.INTERPFACTOR) - trigger_time
             times.append(event_time)
         return times
 
@@ -656,16 +671,28 @@ if __name__ == "__main__":
     offsets = []
     cfpeaks = []
     times = []
+    hits = []
     for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
-        if np.max(levent.leftmatrix) > 70 or np.max(levent.rightmatrix) > 70 or np.max(levent.leftmatrix) < 4 or np.max(levent.rightmatrix) < 4:
-            continue
-        # if levent.event_no > 10000:
+        # if levent.event_no > 2500:
         #     break
+        print(f"Event no: {levent.event_no}")
+        if np.max(levent.leftmatrix) > 70 \
+                or np.max(levent.rightmatrix) > 70 \
+                or np.max(levent.leftmatrix) < 4 \
+                or np.max(levent.rightmatrix) < 4 \
+                or np.min(levent.leftmatrix) < -5 \
+                or np.min(levent.rightmatrix < -5):
+            continue
         # for strip, sevent in levent.stripevents.items():
         #     for pulse in sevent.pulses:
         #         print(f"Strip {strip}: Position: {pulse.position}")
         levent.reconstruct()
-        times += levent.calculate_trigger_times()
+        event_times = levent.calculate_trigger_times()
+        # if len(levent.hits) > 4:
+        #     breakpoint()
+        if event_times:
+            hits += levent.hits
+            times += event_times
     # for levent, lpulses in LAPPDEvent.search_strip(stripnumber, base_dir):
     #     # psf = lpulses[0].leftmatrix[0:3, :]
     #     # levent.set_rootfile("testfile.root")
@@ -679,5 +706,6 @@ if __name__ == "__main__":
     # for value in cfpeaks:
     #     myhist.Fill(value)
     # myhist.Draw()
-    roothist(times, 1)
+    plot_hitmap(hits)
+    th1d = roothist(times, 1)
     breakpoint()
