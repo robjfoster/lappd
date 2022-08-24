@@ -1,4 +1,5 @@
 import os
+import pdb
 from typing import List
 
 import numpy as np
@@ -84,6 +85,13 @@ def find_wave(f, bytes_to_seek, hsize=6, rsize=1024, hdtype=np.int32, wdtype=np.
     return header, wave
 
 
+def get_filename(daqchannel, base="", prefix="wave_"):
+    filename = base + f"{prefix}{daqchannel}.dat"
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"Could not find {filename}")
+    return filename
+
+
 def find_dats(dir):
     datfiles = []
     for file in os.listdir(dir):
@@ -98,7 +106,19 @@ def chunks(lst, n):
         yield lst[i: i + n]
 
 
+def ns(sample_length=0.2, n_samples=1024, offset=0):
+    if not offset:
+        return [sample_length * i for i in range(n_samples)]
+    else:
+        return [(offset+sample_length) * (i+1) for i in range(n_samples)]
+
+
 class CAENReader():
 
     def __init__(self, filename, header_bytes, header_dtype, record_bytes, record_dtype) -> None:
         pass
+
+
+if __name__ == "__main__":
+    print("Entering GDW debug session")
+    pdb.set_trace()
