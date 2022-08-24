@@ -1,9 +1,8 @@
-import pdb
 import os
 import sys
 import subprocess
 
-from auto_utils import hvparse, monitor, cmd_wavedump, cmd_sethv, check_hv, ramp_and_check
+from auto_utils import monitor, cmd_wavedump, cmd_sethv, ramp_and_check
 
 
 time = sys.argv[1]
@@ -17,7 +16,7 @@ PC_CHANNEL = 4
 startdir = os.getcwd()
 
 class cd:
-    # context manager for cd command
+    '''context manager for cd command'''
     def __init__(self, newPath):
         self.newPath = os.path.expanduser(newPath)
 
@@ -31,7 +30,8 @@ class cd:
 
 init_hvinfo = monitor()
 ORIGINAL_PC_VOLTAGE = init_hvinfo[PC_CHANNEL]['vset']
-if ORIGINAL_PC_VOLTAGE > 2055: sys.exit("Has the voltage been reset?")
+if ORIGINAL_PC_VOLTAGE > 2055: 
+    sys.exit("Has the voltage been reset?")
 
 voltages = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 250]
 
