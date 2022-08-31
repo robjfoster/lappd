@@ -2,22 +2,22 @@ from collections import namedtuple
 from math import sqrt
 from typing import List, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 from skimage.feature import peak_local_max
-from lappd.utils.interpolation import gaussMM, image_gaussian
-from lappd.utils.lognormal import lngaus2D
 
 import lappd.utils.sigutils as su
-
 from lappd.utils import lappdcfg as cfg
+from lappd.utils.interpolation import gaussMM, image_gaussian
+from lappd.utils.lognormal import lngaus2D
 from lappd.utils.pdf import AmplPDF, LocPDF, TimePDF
 
 Hit = namedtuple("Hit", "x y")
 Hit3D = namedtuple("Hit3D", "x y z")
-RecoHit = namedtuple("RecoHit", "recox recoy x y z")
+RecoHit = namedtuple("RecoHit", "recox recoy recot x y z")
 Pair = namedtuple("Pair", "left right")
 
-x = np.arange(0, 1014, 1)
+x = np.arange(0, cfg.NSAMPLES - cfg.NREMOVEDSAMPLES, 1)
 y = np.arange(0, 8, 1)
 xx, yy = np.meshgrid(x, y)
 # newx = np.arange(0, 1013, 0.1)
@@ -36,7 +36,7 @@ def x_to_t(x, interpfactor=10.0):
 
 def y_to_loc(y, interpfactor=10.0):
     strip = y / interpfactor
-    return 200 - ((cfg.STRIPWIDTH * (strip+1)) + (cfg.STRIPSPACING/2.0))
+    return 100 - ((cfg.STRIPWIDTH * (strip+1)) + (cfg.STRIPSPACING/2.0))
 
 
 def z_to_ampl(z):
@@ -46,25 +46,27 @@ def z_to_ampl(z):
 def transverse_position(lefttime, righttime):
     timedelta = lefttime - righttime
     pos = timedelta / cfg.MAXDELTA * (cfg.STRIPLENGTH / 2.0)
+    #pos = timedelta * (cfg.STRIPVELOCITY*cfg.SOL) / 2.0
     timedeltaerror = sqrt((cfg.TIMEJITTER)**2 + (cfg.TIMEJITTER)**2)
     poserror = pos * sqrt((timedeltaerror / timedelta) **
                           2 + (cfg.MAXDELTAERROR / cfg.MAXDELTA)**2)
     return pos, abs(poserror)
 
 
-def cfd_timestamp(matrix: np.ndarray, hit: Hit3D):
+def cfd_timestamp(matrix: np.ndarray, hit: Hit3D, times=None):
     strippulse = matrix[hit.y]
-    timestamp, status = su.cfd(strippulse*-1, 0.2, userpeak=hit.x)
+    timestamp, status = su.cfd(
+        strippulse*-1, 0.2, userpeak=hit.x, times=times, plot=True)
     return timestamp, status
 
 
 def get_centroid(matrix: np.ndarray, hit: Hit3D, width: int = 10) -> float:
-    if hit.y+10 >= matrix.shape[0]:
-        upper = matrix.shape[0]-1
+    if hit.y+width >= matrix.shape[0]:
+        upper = matrix.shape[0]-1 - hit.y
     else:
         upper = width
-    if hit.y-10 < 0:
-        lower = 0
+    if hit.y-width < 0:
+        lower = -hit.y
     else:
         lower = width
     slicedmatrix = matrix[hit.y-lower:hit.y+upper, hit.x]
@@ -119,7 +121,7 @@ def detect_peaks(matrix, threshold=3, min_distance=5, exclude_border=False):
 
 def plot_hitmap(hits, bins=150):
     heatmap, xedges, yedges = np.histogram2d([hit.recox for hit in hits], [
-                                             hit.recoy for hit in hits], bins=bins, range=[[-150, 150], [0, 200]])
+                                             hit.recoy for hit in hits], bins=bins, range=[[-150, 150], [-100, 100]])
     extent = [-150, 150, 0, 200]
     plt.clf()
     plt.imshow(heatmap.T, extent=extent, origin='lower')
@@ -356,7 +358,7 @@ if __name__ == "__main__":
             ypos = (y_to_loc(pair.left.y) + y_to_loc(pair.right.y)) / 2.0
             ypos = y_to_loc(get_centroid(leftcleaninterp, pair.left) +
                             get_centroid(rightcleaninterp, pair.right) / 2.0)
-            recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
+            recohit = RecoHit(xpos, ypos, 0, (pair.left.x + pair.right.x) /
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hits.append(recohit)
             hiterrs.append(Hit(xposerr, 5))

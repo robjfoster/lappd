@@ -52,9 +52,44 @@ STRIPSPACING = constants.getfloat("stripspacing")
 
 MAXDELTA = 200 / (STRIPVELOCITY * SOL)  # Max LR offset in ns
 MAXDELTAERROR = (PROPERROR / STRIPVELOCITY) * MAXDELTA
+TIMES = np.arange(NS_PER_SAMPLE, NS_PER_SAMPLE *
+                  (NSAMPLES - NREMOVEDSAMPLES), NS_PER_SAMPLE)
+# The average radius of electron charge cloud exiting the bottom MCP (mm)
+CLOUDRADIUS = 4
 
-allstrips = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -
-             1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14]
+allstrips = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
+             -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14]
+
+STRIPMAP = {
+    14: 0,
+    13: 1,
+    12: 2,
+    11: 3,
+    10: 4,
+    9: 5,
+    8: 6,
+    7: 7,
+    6: 8,
+    5: 9,
+    4: 10,
+    3: 11,
+    2: 12,
+    1: 13,
+    -1: 14,
+    -2: 15,
+    -3: 16,
+    -4: 17,
+    -5: 18,
+    -6: 19,
+    -7: 20,
+    -8: 21,
+    -9: 22,
+    -10: 23,
+    -11: 24,
+    -12: 25,
+    -13: 26,
+    -14: 27,
+}
 
 
 def get_channel_config(configfile):

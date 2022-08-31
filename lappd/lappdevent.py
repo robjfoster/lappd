@@ -64,6 +64,7 @@ class LAPPDEvent():
         self.pairs = None
         self.hits = None
         self.hiterrors = None
+        self.times = None
 
     @classmethod
     def build(cls, stripfiles: Dict[int, Tuple[str, str]], event_no: int) -> "LAPPDEvent":
@@ -76,11 +77,13 @@ class LAPPDEvent():
         return cls(stripevents, event_no=event_no)
 
     @classmethod
-    def build_from_matrix(cls, leftmatrix: np.ndarray, rightmatrix: np.ndarray) -> "LAPPDEvent":
+    def build_from_matrix(cls, leftmatrix: np.ndarray, rightmatrix: np.ndarray, event_no: int) -> "LAPPDEvent":
         # As it stands, only works if matrices have shape (28, 1014)
         dummy_header = pyCAENHeader(0, 0, 0, 0, 0, 0)
-        times = np.arange(cfg.NS_PER_SAMPLE, (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) *
-                          cfg.NS_PER_SAMPLE, cfg.NS_PER_SAMPLE)
+        times = np.arange(cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) * \
+            cfg.NS_PER_SAMPLE
+        # times = np.arange(cfg.NS_PER_SAMPLE, (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) *
+        #                   cfg.NS_PER_SAMPLE, cfg.NS_PER_SAMPLE)
         stripevents = {}
         for i, strip in enumerate(range(14, -15, -1)):
             if strip == 0:
@@ -89,11 +92,13 @@ class LAPPDEvent():
                 index = i
             else:
                 index = i-1
-            leftwave = pyCAENWave(dummy_header, leftmatrix[index], times, 0)
-            rightwave = pyCAENWave(dummy_header, rightmatrix[index], times, 0)
+            leftwave = pyCAENWave(
+                dummy_header, leftmatrix[index], times, event_no)
+            rightwave = pyCAENWave(
+                dummy_header, rightmatrix[index], times, event_no)
             stripevent = StripEvent(leftwave, rightwave, analyse=False)
             stripevents[strip] = stripevent
-        return cls(stripevents, event_no=0)
+        return cls(stripevents, event_no=event_no)
 
     @classmethod
     def build_raw(cls,
@@ -256,17 +261,21 @@ class LAPPDEvent():
                 breakpoint()
         return leftmatrix * -1, rightmatrix * -1
 
-    def reconstruct(self, plot=False):
-        left_deconvolved = do_wiener(self.leftmatrix, cfg.TEMPLATE)
-        right_deconvolved = do_wiener(self.rightmatrix, cfg.TEMPLATE)
+    def reconstruct(self, plot=False, template=None):
+        left_deconvolved = do_wiener(
+            self.leftmatrix, template if template is not None else cfg.TEMPLATE)
+        right_deconvolved = do_wiener(
+            self.rightmatrix, template if template is not None else cfg.TEMPLATE)
         # Change this to dynamically calculate the number of strips to show
         left_interp = interp_matrix(left_deconvolved, startx=0, stopx=cfg.NSAMPLES -
                                     cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=cfg.INTERPFACTOR)
         right_interp = interp_matrix(right_deconvolved, startx=0, stopx=cfg.NSAMPLES -
                                      cfg.NREMOVEDSAMPLES, starty=0, stopy=28, interpfactor=cfg.INTERPFACTOR)
         # Change this to also account for minimum distance
-        leftpeaks = detect_peaks(left_interp, threshold=cfg.MINHEIGHT)
-        rightpeaks = detect_peaks(right_interp, threshold=cfg.MINHEIGHT)
+        leftpeaks = detect_peaks(left_interp, threshold=cfg.MINHEIGHT, min_distance=int(
+            cfg.MINDISTANCE / (cfg.NS_PER_SAMPLE / cfg.INTERPFACTOR)))
+        rightpeaks = detect_peaks(right_interp, threshold=cfg.MINHEIGHT, min_distance=int(
+            cfg.MINDISTANCE / (cfg.NS_PER_SAMPLE / cfg.INTERPFACTOR)))
         # Change this to allow for min likelihood (add to config)
         pairs, (left_unmatched, right_unmatched) = match_peaks(
             leftpeaks, rightpeaks, left_interp, right_interp)
@@ -281,9 +290,11 @@ class LAPPDEvent():
             xpos, xposerr = transverse_position(
                 x_to_t(leftcfd, interpfactor=cfg.INTERPFACTOR),
                 x_to_t(rightcfd, interpfactor=cfg.INTERPFACTOR))
-            ypos = y_to_loc(get_centroid(left_interp, pair.left) +
-                            get_centroid(right_interp, pair.right) / 2.0, interpfactor=cfg.INTERPFACTOR)
-            recohit = RecoHit(xpos, ypos, (pair.left.x + pair.right.x) /
+            breakpoint()
+            ypos = y_to_loc((get_centroid(left_interp, pair.left) + get_centroid(
+                right_interp, pair.right)) / 2.0, interpfactor=cfg.INTERPFACTOR)
+            time = x_to_t((leftcfd + rightcfd) / 2.0)
+            recohit = RecoHit(xpos, ypos, time, (pair.left.x + pair.right.x) /
                               2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
             hiterr = Hit(xposerr, 5)
             hits.append(recohit)
@@ -296,12 +307,12 @@ class LAPPDEvent():
         self.hiterrors = hiterrs
         if plot:
             x = np.arange(0, 1014, 1)
-            y = np.arange(0, 8, 1)
+            y = np.arange(0, 28, 1)
             xx, yy = np.meshgrid(x, y)
             thismin = min((np.min(self.leftmatrix), np.min(self.rightmatrix)))
             thismax = max((np.max(self.leftmatrix), np.max(self.rightmatrix)))
             fig = plt.figure()
-            fig.suptitle(f"Event {levent.event_no}")
+            fig.suptitle(f"Event {self.event_no}")
             ax0 = fig.add_subplot(231, projection="3d")
             ax1 = fig.add_subplot(232)
             ax2 = fig.add_subplot(233)
@@ -309,16 +320,16 @@ class LAPPDEvent():
             ax4 = fig.add_subplot(235)
             ax5 = fig.add_subplot(236)
             base_img = ax1.imshow(
-                self.leftmatrix[0:8], aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
-            ax4.imshow(self.rightmatrix[0:8], aspect="auto",
-                       interpolation="none", vmin=thismin, vmax=thismax)
-            ax2.imshow(left_interp[0:80],
-                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
-            ax5.imshow(right_interp[0:80],
-                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax)
-            surf1 = ax0.plot_surface(yy, xx, self.leftmatrix[0:8],
+                self.leftmatrix, aspect="auto", interpolation="none", vmin=thismin, vmax=thismax, origin="upper")
+            ax4.imshow(self.rightmatrix, aspect="auto",
+                       interpolation="none", vmin=thismin, vmax=thismax, origin="upper")
+            ax2.imshow(left_interp,
+                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax, origin="upper")
+            ax5.imshow(right_interp,
+                       aspect="auto", interpolation="none", vmin=thismin, vmax=thismax, origin="upper")
+            surf1 = ax0.plot_surface(yy, xx, self.leftmatrix,
                                      rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
-            surf2 = ax3.plot_surface(yy, xx, self.rightmatrix[0:8],
+            surf2 = ax3.plot_surface(yy, xx, self.rightmatrix,
                                      rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
             ax0.set_title("Left, observed signal")
             ax3.set_title("Right, observed signal")
@@ -329,20 +340,20 @@ class LAPPDEvent():
             # To set the axis ticks:
             ax1.set_xticks(np.arange(0, 1014, 100))
             ax1.set_xticklabels(np.arange(0, 210, 20))
-            ax1.set_yticks(np.arange(0, 8, 1))
-            ax1.set_yticklabels(np.arange(14, 6, -1))
+            ax1.set_yticks(np.arange(0, 28, 1))
+            ax1.set_yticklabels(cfg.allstrips)
             ax4.set_xticks(np.arange(0, 1014, 100))
             ax4.set_xticklabels(np.arange(0, 210, 20))
-            ax4.set_yticks(np.arange(0, 8, 1))
-            ax4.set_yticklabels(np.arange(14, 6, -1))
+            ax4.set_yticks(np.arange(0, 28, 1))
+            ax4.set_yticklabels(cfg.allstrips)
             ax2.set_xticks(np.arange(0, 10140, 1000))
             ax2.set_xticklabels(np.arange(0, 210, 20))
-            ax2.set_yticks(np.arange(0, 80, 10))
-            ax2.set_yticklabels(np.arange(14, 6, -1))
+            ax2.set_yticks(np.arange(0, 280, 10))
+            ax2.set_yticklabels(cfg.allstrips)
             ax5.set_xticks(np.arange(0, 10140, 1000))
             ax5.set_xticklabels(np.arange(0, 210, 20))
-            ax5.set_yticks(np.arange(0, 80, 10))
-            ax5.set_yticklabels(np.arange(14, 6, -1))
+            ax5.set_yticks(np.arange(0, 280, 10))
+            ax5.set_yticklabels(cfg.allstrips)
             ax1.set_xlabel("Time (ns)")
             ax1.set_ylabel("Stripnumber")
             ax4.set_xlabel("Time (ns)")
@@ -354,6 +365,7 @@ class LAPPDEvent():
             fig.colorbar(base_img, ax=[ax0, ax1, ax2, ax3, ax4, ax5],
                          orientation="horizontal", fraction=0.016)
             for i, pair in enumerate(pairs):
+                print(f"Pair: {pair.left.x}, {pair.right.y}")
                 ax2.scatter(pair.left.x, pair.left.y,
                             c="pink", s=25, marker="o")
                 ax5.scatter(pair.right.x, pair.right.y,
@@ -378,7 +390,7 @@ class LAPPDEvent():
                      yerr=[hiterr.y for hiterr in self.hiterrors], marker="o", markersize=2.5, linestyle="None", capsize=2.5)
         for i in strip_positions:
             plt.axhline(i, c="purple", alpha=0.2)
-            plt.ylim(0, 200)
+            plt.ylim(-100, 100)
             plt.xlim(-150, 150)
             plt.xlabel("Horizontal position (mm)")
             plt.ylabel("Vertical position (mm)")

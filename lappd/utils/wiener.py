@@ -1,5 +1,6 @@
 import numpy as np
-from skimage.restoration import wiener
+from skimage.restoration import wiener, richardson_lucy
+from scipy.signal import fftconvolve
 
 
 def wiener_deconv(matrix, psf, balance=0.1):
@@ -8,7 +9,8 @@ def wiener_deconv(matrix, psf, balance=0.1):
 
 
 def do_wiener(matrix: np.ndarray, psf: np.ndarray, balance: float = 0.1, plot=False):
-    deconved = wiener(matrix, psf, balance)
+    deconved = wiener(matrix, psf, 1.0/(0.65**2 / np.std(matrix)**2))
+    #deconved = richardson_lucy(matrix, psf, num_iter=25)
     if plot:
         import matplotlib.pyplot as plt
         plt.imshow(deconved, aspect="auto")

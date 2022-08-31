@@ -16,3 +16,4 @@ def roothist(data, bin_width, bin_min=None, bin_max=None, name="test1234"):
         th1d.Fill(value)
     th1d.Draw()
     breakpoint()
+    th1d.Clear()
