@@ -56,7 +56,7 @@ def transverse_position(lefttime, righttime):
 def cfd_timestamp(matrix: np.ndarray, hit: Hit3D, times=None):
     strippulse = matrix[hit.y]
     timestamp, status = su.cfd(
-        strippulse*-1, 0.2, userpeak=hit.x, times=times, plot=True)
+        strippulse*-1, 0.2, userpeak=hit.x, times=times)
     return timestamp, status
 
 
