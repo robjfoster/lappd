@@ -28,6 +28,10 @@ class LogNormal:
     def npcall(self, arr, par):
         return par[3] - (par[0] / ((arr) * np.sqrt(2 * np.pi * par[2]**2))) * np.exp(-(np.log((arr) / par[1]))**2 / (2 * par[2]**2))
 
+    def npcall2(self, t, Q, t0, ti, sigma, baseline=0):
+        # from https://pdfs.semanticscholar.org/501a/7c3c2e8a47fab31e25639ae89af79247e09b.pdf
+        return baseline - (Q / ((t+t0) * np.sqrt(2 * np.pi * sigma**2))) * np.exp(-(np.log((t+t0)/ti))**2 / (2*sigma**2))
+
 
 class ScintPDF:
 
