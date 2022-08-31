@@ -1,9 +1,9 @@
-import os
 import sys
 import subprocess
 
 
 def hvparse(output: str):
+    '''Parsing information from CAEN HV module.'''
     output = output.decode("utf-8").split("\n")
     error_msg = output[0]
     header = output[1].split(",")
@@ -26,6 +26,7 @@ def hvparse(output: str):
     return hvinfo
 
 def monitor(cmd='/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'):
+    '''Getting monitoring infomation from HV.'''
     # TODO: Rampup/Rampdown is considered an error message
     try:
         output = subprocess.check_output(cmd, shell=True)
@@ -36,6 +37,7 @@ def monitor(cmd='/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'
     return hvinfo
 
 def cmd_wavedump(time, config_path):
+    '''Running wavedump.'''
     wavedump_cmd = ""
     wavedump_cmd += '(sleep 3s && echo "s" && sleep 3s && echo "W" && '
     wavedump_cmd += f'sleep {time}s && echo "W" && sleep 3s && echo "s" && sleep 3s && echo "q")'
@@ -43,11 +45,12 @@ def cmd_wavedump(time, config_path):
     subprocess.call(wavedump_cmd, shell=True)
 
 def cmd_sethv(channel, voltage):
+    '''Setting HV to desired voltage.'''
     reset_cmd = f'/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --VSet {channel} {voltage}'
     subprocess.call(reset_cmd, shell=True)
 
 def check_hv(channel: int, tolerance:float = 1) -> bool:
-    """Check vset and vmon are with tolerance"""
+    '''Check vset and vmon are with tolerance'''
     # try:
     #     monitoroutput = subprocess.check_output(MONITOR_CMD, shell=True).decode("utf-8")
     # except subprocess.CalledProcessError as e:
@@ -63,13 +66,11 @@ def check_hv(channel: int, tolerance:float = 1) -> bool:
     # hv_channel_data = hv_channel.split(",")
     # if int(hv_channel_data[1]) != PC_CHANNEL: sys.exit("WRONG CHANNEL")
     # vmon = float(hv_channel_data[4].split("V")[0])
-    if abs(vmon-vset) <= tolerance: 
-        return True
-    else: 
-        return False
+    return(bool(abs(vmon-vset) <= tolerance))
+
 
 def ramp_time(channel:int, tolerance:float = 1) -> float:
-    """Estimate time needed to ramp to target voltage"""
+    '''Estimate time needed to ramp to target voltage'''
     hvinfo = monitor()
     vmon = hvinfo[channel]['vmon']
     vset = hvinfo[channel]['vset']
@@ -81,25 +82,26 @@ def ramp_time(channel:int, tolerance:float = 1) -> float:
     elif abs(vset-vmon) <= tolerance:
         ramptime = 0
         return ramptime
-    
+
     ramprate = hvinfo[channel][rampupdown]
-    vdiff = abs(vtarget-vinit)
+    vdiff = abs(vset-vmon)
 
     ramptime = vdiff/ramprate
     return ramptime
 
 
 def ramp_and_check(channel:int, tolerance:float = 1, sleeptime=None, loopcount=15):
+    '''Ramp voltages and monitor along the way.'''
     loop_count = 0
     ramptime = ramp_time(channel, tolerance) + 1
     stime = ramptime if not sleeptime else sleeptime
-    
+
     while True:
         if check_hv(channel):
             print("Voltage reached")
             break
-        else:
-            print("Ramping voltage...")
-            loop_count += 1
-            if loop_count > 15: sys.exit("Monitoring took a long time, something's wrong")
-            subprocess.call(f"sleep {stime}s", shell=True)
+        print("Ramping voltage...")
+        loop_count += 1
+        if loop_count > loopcount:
+            sys.exit("Monitoring took a long time, something's wrong")
+        subprocess.call(f"sleep {stime}s", shell=True)
