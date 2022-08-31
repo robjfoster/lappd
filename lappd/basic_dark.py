@@ -8,17 +8,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import ROOT as root
 
-import utils.gimmedatwave as gdw
-import utils.sigutils as su
+import lappd.utils.gimmedatwave as gdw
+import lappd.utils.sigutils as su
+from lappd.utils.cxxbindings import caenreader
 
 try:
     base_directory = sys.argv[1]
 except IndexError:
     sys.exit("Specify the directory")
 
-root.gSystem.Load(os.path.dirname(os.path.realpath(__file__))
-                  + "/utils/caenreader_cpp.so")
-caenreader = root.CAENReader
 
 LOWTHRESHOLD = -5.0  # mV
 HIGHTHRESHOLD = 3.0  # mV
@@ -31,6 +29,7 @@ for file in files:
     print(f"Reading {file}")
     n_waves = caenreader.getNumberEntries(file)
     print(f"Number of waves: {n_waves}")
+    breakpoint()
     total_time = sample_times[-1] * n_waves * 1e-9
     rt_waves = []
     start = time.time()
@@ -39,11 +38,12 @@ for file in files:
     end = time.time()
     print(f"Processing time: {end - start}")
     for wave in coarse_output.waves:
-        peaks = caenreader.findPeaks(wave.wave, -4, 5)
+        peaks = caenreader.findPeaks(wave.wave, -4, 5, 2)
         if len(peaks) > 1:
             pdb.set_trace()
         try:
             if su.rise_time(np.asarray(wave.wave), RISETHRESHOLD, fraction1=0.5, fraction2=1.0):
+                breakpoint()
                 rt_waves.append(wave)
         except IndexError:
             pdb.set_trace()

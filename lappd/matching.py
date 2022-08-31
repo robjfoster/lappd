@@ -212,7 +212,6 @@ strip_positions = y_to_loc(np.arange(0, 28, 1), interpfactor=1)
 if __name__ == "__main__":
     import sys
 
-    import matplotlib.pyplot as plt
     from matplotlib import cm
 
     from lappd.lappdevent import LAPPDEvent
@@ -225,17 +224,18 @@ if __name__ == "__main__":
     base_dir = sys.argv[1]
     stripnumber = int(sys.argv[2])
     eventcount = 0
-    for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
+    for levent in LAPPDEvent.itr_all_raw(base_dir, trigger=None):
         if su.threshold(levent.leftmatrix, 70, polarity="positive") \
                 or su.threshold(levent.rightmatrix, 70, polarity="positive") \
                 or not su.threshold(levent.leftmatrix, 2, polarity="positive") \
                 or not su.threshold(levent.rightmatrix, 2, polarity="positive"):
             continue
-        if levent.event_no > 1000:
-            break
+        # if levent.event_no > 5000:
+        #    break
+        breakpoint()
         template = np.load("template2d.npy")
         temp1d = np.load("template.npy")
-        print(f"Event number: {levent.event_no}")
+        #print(f"Event number: {levent.event_no}")
         eventcount += 1
         left = levent.leftmatrix
         right = levent.rightmatrix
@@ -348,7 +348,10 @@ if __name__ == "__main__":
             # rpairy = rightpeaks[pair[1]][0]
             leftcfd, leftstatus = cfd_timestamp(leftcleaninterp, pair.left)
             rightcfd, rightstatus = cfd_timestamp(rightcleaninterp, pair.right)
-            trigger_time = levent.trigevent.pulses[0].left.cfpeak
+            try:
+                trigger_time = levent.trigevent.pulses[0].left.cfpeak
+            except:
+                trigger_time = 0
             event_time = x_to_t(((leftcfd + rightcfd) / 2.0)) - trigger_time
             if leftstatus is False or rightstatus is False:
                 print("Skipped due to CFD failure")

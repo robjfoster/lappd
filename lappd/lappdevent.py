@@ -685,7 +685,7 @@ if __name__ == "__main__":
     times = []
     hits = []
     for levent in LAPPDEvent.itr_all_raw(base_dir, trigger="_0"):
-        # if levent.event_no > 2500:
+        # if levent.event_no > 10000:
         #     break
         print(f"Event no: {levent.event_no}")
         if np.max(levent.leftmatrix) > 70 \
@@ -700,8 +700,9 @@ if __name__ == "__main__":
         #         print(f"Strip {strip}: Position: {pulse.position}")
         levent.reconstruct()
         event_times = levent.calculate_trigger_times()
-        # if len(levent.hits) > 4:
-        #     breakpoint()
+        if (nhits := len(levent.hits)) > 7:
+            print(nhits)
+            breakpoint()
         if event_times:
             hits += levent.hits
             times += event_times
@@ -719,5 +720,6 @@ if __name__ == "__main__":
     #     myhist.Fill(value)
     # myhist.Draw()
     plot_hitmap(hits)
-    th1d = roothist(times, 1)
+    th1d = roothist(times, 0.2)
+    th1d.SetTitle("Time of arrival;delta T (ns);Count")
     breakpoint()
