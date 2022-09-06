@@ -54,6 +54,10 @@ MAXDELTA = 200 / (STRIPVELOCITY * SOL)  # Max LR offset in ns
 MAXDELTAERROR = (PROPERROR / STRIPVELOCITY) * MAXDELTA
 TIMES = np.arange(NS_PER_SAMPLE, NS_PER_SAMPLE *
                   (NSAMPLES - NREMOVEDSAMPLES), NS_PER_SAMPLE)
+INTERPEDTIMES = np.arange(NS_PER_SAMPLE/INTERPFACTOR,
+                          (NS_PER_SAMPLE) * (NSAMPLES - NREMOVEDSAMPLES) -
+                          (NS_PER_SAMPLE-0.0000001),
+                          NS_PER_SAMPLE/INTERPFACTOR)
 # The average radius of electron charge cloud exiting the bottom MCP (mm)
 CLOUDRADIUS = 4
 

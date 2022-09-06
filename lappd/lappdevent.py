@@ -293,8 +293,12 @@ class LAPPDEvent():
             ypos = y_to_loc((get_centroid(left_interp, pair.left) + get_centroid(
                 right_interp, pair.right)) / 2.0, interpfactor=cfg.INTERPFACTOR)
             time = x_to_t((leftcfd + rightcfd) / 2.0)
-            recohit = RecoHit(xpos, ypos, time, (pair.left.x + pair.right.x) /
-                              2.0, (pair.left.y + pair.right.y) / 2.0, (pair.left.z + pair.right.z) / 2.0)
+            recohit = RecoHit(xpos,
+                              ypos,
+                              time,
+                              (pair.left.x + pair.right.x) / 2.0,
+                              (pair.left.y + pair.right.y) / 2.0,
+                              (pair.left.z + pair.right.z) / 2.0)
             hiterr = Hit(xposerr, 5)
             hits.append(recohit)
             hiterrs.append(hiterr)
@@ -305,7 +309,7 @@ class LAPPDEvent():
         self.hits = hits
         self.hiterrors = hiterrs
         if plot:
-            x = np.arange(0, 1014, 1)
+            x = np.arange(0, cfg.NSAMPLES - cfg.NREMOVEDSAMPLES, 1)
             y = np.arange(0, 28, 1)
             xx, yy = np.meshgrid(x, y)
             thismin = min((np.min(self.leftmatrix), np.min(self.rightmatrix)))
@@ -327,9 +331,9 @@ class LAPPDEvent():
             ax5.imshow(right_interp,
                        aspect="auto", interpolation="none", vmin=thismin, vmax=thismax, origin="upper")
             surf1 = ax0.plot_surface(yy, xx, self.leftmatrix,
-                                     rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
+                                     rstride=5, cstride=5, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
             surf2 = ax3.plot_surface(yy, xx, self.rightmatrix,
-                                     rstride=1, cstride=1, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
+                                     rstride=5, cstride=5, vmin=thismin, vmax=thismax, cmap=cm.coolwarm)
             ax0.set_title("Left, observed signal")
             ax3.set_title("Right, observed signal")
             ax1.set_title("Left, observed signal")
@@ -337,19 +341,23 @@ class LAPPDEvent():
             ax2.set_title("Left, deconvolved, interpolated")
             ax5.set_title("Right, deconvolved, interpolated")
             # To set the axis ticks:
-            ax1.set_xticks(np.arange(0, 1014, 100))
+            ax1.set_xticks(
+                np.arange(0, cfg.NSAMPLES - cfg.NREMOVEDSAMPLES, 100))
             ax1.set_xticklabels(np.arange(0, 210, 20))
             ax1.set_yticks(np.arange(0, 28, 1))
             ax1.set_yticklabels(cfg.allstrips)
-            ax4.set_xticks(np.arange(0, 1014, 100))
+            ax4.set_xticks(
+                np.arange(0, cfg.NSAMPLES - cfg.NREMOVEDSAMPLES, 100))
             ax4.set_xticklabels(np.arange(0, 210, 20))
             ax4.set_yticks(np.arange(0, 28, 1))
             ax4.set_yticklabels(cfg.allstrips)
-            ax2.set_xticks(np.arange(0, 10140, 1000))
+            ax2.set_xticks(
+                np.arange(0, (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) * 10, 1000))
             ax2.set_xticklabels(np.arange(0, 210, 20))
             ax2.set_yticks(np.arange(0, 280, 10))
             ax2.set_yticklabels(cfg.allstrips)
-            ax5.set_xticks(np.arange(0, 10140, 1000))
+            ax5.set_xticks(
+                np.arange(0, (cfg.NSAMPLES - cfg.NREMOVEDSAMPLES) * 10, 1000))
             ax5.set_xticklabels(np.arange(0, 210, 20))
             ax5.set_yticks(np.arange(0, 280, 10))
             ax5.set_yticklabels(cfg.allstrips)
@@ -442,7 +450,7 @@ class LAPPDEvent():
             print("Did not recognise side.")
             return
         strips = [strip for strip in self.stripevents.keys()]
-        samples = [i for i in range(1014)]
+        samples = [i for i in range(cfg.NSAMPLES - cfg.NREMOVEDSAMPLES)]
         times = [i*cfg.NS_PER_SAMPLE for i in samples]
         x, y = np.meshgrid(strips, samples)
         # z = get_sample(x, y)
@@ -454,8 +462,8 @@ class LAPPDEvent():
         ax.set_zlabel("Amplitude (mV)")
         # ax.plot_surface(x, y, z, cmap='binary', cstride=8, rstride=1014)
         for strip in strips:
-            ax.plot3D(times, [strip for i in range(1014)],
-                      get_sample(strip, [i for i in range(1014)]), linestyle="-", marker="o", markersize=1, linewidth=1)
+            ax.plot3D(times, [strip for i in range(cfg.NSAMPLES - cfg.NREMOVEDSAMPLES)], get_sample(strip, [
+                      i for i in range(cfg.NSAMPLES - cfg.NREMOVEDSAMPLES)]), linestyle="-", marker="o", markersize=1, linewidth=1)
         plt.title(f"{side} side. Event {self.event_no}")
         if show:
             plt.show()

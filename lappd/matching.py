@@ -126,7 +126,6 @@ def plot_hitmap(hits, bins=150):
     plt.clf()
     plt.imshow(heatmap.T, extent=extent, origin='lower')
     plt.colorbar()
-    plt.title("BGO + Sr90 masked 0-160 mm in x")
     plt.xlabel("Reconstructed x position (mm)")
     plt.ylabel("Reconstructed y position (mm)")
     plt.show()

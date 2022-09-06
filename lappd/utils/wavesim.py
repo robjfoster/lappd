@@ -212,12 +212,7 @@ try:
 except IndexError:
     n_samples = 0
 rng = np.random.default_rng(seed=1)
-# f = root.TFile(filepath, "READ")
-# t = f.Get("T")
-# rt = f.Get("runT")
-# assert rt.GetEntries() == 1
-# rt.GetEntry(0)
-# PMTINFO = rt.run.GetPMTInfo()
+
 pmt_times = []
 lappd_times = []
 trigger_times = []
@@ -240,8 +235,6 @@ for event in gen_event(filepath):
     print(event.evnumber)
     # if event.evnumber > 1000:
     #     break
-    #print(f"PMT IDs: {event.pmt_ids}. MCPMT IDs: {event.mcpmt_ids}")
-    #print(f"PMT types: {event.pmt_types}")
     if event.pmts:
         for mcpmt in event.mcpmts:
             if mcpmt.GetType() == 2:
@@ -286,15 +279,8 @@ for event in gen_event(filepath):
                     continue
                 levent.reconstruct(
                     plot=False, template=cfg.TEMPLATE)  # + gen_noise(0, NOISE_RMS/4, cfg.TEMPLATE.shape))
-                # plt.plot(levent.leftmatrix[cfg.STRIPMAP[-5]])
-                # plt.plot(levent.deconvolved[0][cfg.STRIPMAP[-5]])
-                # plt.plot(cfg.TEMPLATE[14])
-                # plt.show()
-                # breakpoint()
                 print(f"Number of hits reconstructed: {len(levent.hits)}")
                 print(levent.hits)
-                # if len(levent.hits) < 3 or len(levent.hits) > 5:
-                #     breakpoint()
                 n_photons.append(len(samples))
                 n_hits.append(len(levent.hits))
                 effs.append(len(levent.hits) / len(samples))
@@ -306,37 +292,9 @@ for event in gen_event(filepath):
                     y_res.append(recohit.recoy - mc_hits[index][1])
                     t_res.append(
                         (recohit.recot) - mc_hits[index][2])
-                    if (recohit.recot) - mc_hits[index][2] > 10:
-                        breakpoint()
-                # breakpoint()
-                # if len(levent.hits) == 1:
-                #     # if abs(levent.hits[0].recox - position[0]) > 20:
-                #     #     breakpoint()
-                #     mc_pos.append(position)
-                #     reco_pos.append(levent.hits[0])
-                # elif len(levent.hits) > 1:
-                #     mc_pos.append(position)
-                #     levent.hits.sort(key=lambda hit: hit.x)
-                #     reco_pos.append(levent.hits[0])
-                # else:
-                #     levent.plot_both()
                 trigger_times += [x_to_t(hit.x) - np.random.normal(TIME_OFFSET, 0.27)
                                   for hit in levent.hits]
 
-# diffx = [(mc[0] - reco.recox) for (mc, reco) in zip(mc_pos, reco_pos)]
-# diffy = [(mc[1] - reco.recoy) for (mc, reco) in zip(mc_pos, reco_pos)]
-# diff = [((mc[0]**2 + mc[1]**2)**0.5 - (reco.recox**2 + reco.recoy**2)**0.5)
-#         for (mc, reco) in zip(mc_pos, reco_pos)]
-# diff = [np.sqrt((mc[0] - reco.recox)**2 + (mc[1] - reco.recoy)**2)
-#         for (mc, reco) in zip(mc_pos, reco_pos)]
-# diffxth1d = root.TH1D("x resolution", "x resolution", 100, -100, 100)
-# diffyth1d = root.TH1D("y resolution", "y resolution", 100, -100, 100)
-# diffth1d = root.TH1D("position resolution",
-#                      "position resolution", 100, -100, 100)
-# for x, y, r in zip(diffx, diffy, diff):
-#     diffxth1d.Fill(x)
-#     diffyth1d.Fill(y)
-#     diffth1d.Fill(r)
 xposhist = root.TH1D("xpos", "xpos", 300, -100, 100)
 yposhist = root.TH1D("ypos", "ypos", 300, -100, 100)
 thist = root.TH1D("t", "t", 6000, -100, 100)
@@ -347,21 +305,19 @@ for xval, yval, tval in zip(x_res, y_res, t_res):
 xposhist.Fit("gaus")
 yposhist.Fit("gaus")
 thist.Fit("gaus")
-breakpoint()
 times = root.TH1D("times", "times", 300, -10, 50)
 for value in trigger_times:
     times.Fill(value)
 times.Draw()
+breakpoint()
 print("EFFS: ", effs)
 breakpoint()
 pmtth1d = root.TH1D("test", "test", 40, -10, 10)
-#delt = list(np.array(delt) + 5e-9)
 for value in pmt_times:
     pmtth1d.Fill(value)
 pmtth1d.Draw()
 breakpoint()
 lth1d = root.TH1D("test2", "test2", 40, -2, 2)
-#delt = list(np.array(delt) + 5e-9)
 for value in lappd_times:
     lth1d.Fill(value)
 lth1d.Draw()
