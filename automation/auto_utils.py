@@ -25,7 +25,8 @@ def hvparse(output: str):
         hvinfo[channel] = values
     return hvinfo
 
-def monitor(cmd='/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'):
+
+def monitor(cmd='/home/watchman/Documents/LAPPDCrate/sethv/sethv --monitor'):
     '''Getting monitoring infomation from HV.'''
     # TODO: Rampup/Rampdown is considered an error message
     try:
@@ -36,6 +37,7 @@ def monitor(cmd='/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --monitor'
         sys.exit("Monitoring error")
     return hvinfo
 
+
 def cmd_wavedump(time, config_path):
     '''Running wavedump.'''
     wavedump_cmd = ""
@@ -44,12 +46,14 @@ def cmd_wavedump(time, config_path):
     wavedump_cmd += f' | wavedump {config_path}'
     subprocess.call(wavedump_cmd, shell=True)
 
+
 def cmd_sethv(channel, voltage):
     '''Setting HV to desired voltage.'''
-    reset_cmd = f'/home/watchman/Documents/LAPPD/CAENCrate/sethv/sethv --VSet {channel} {voltage}'
+    reset_cmd = f'/home/watchman/Documents/LAPPDCrate/sethv/sethv --VSet {channel} {voltage}'
     subprocess.call(reset_cmd, shell=True)
 
-def check_hv(channel: int, tolerance:float = 1) -> bool:
+
+def check_hv(channel: int, tolerance: float = 1) -> bool:
     '''Check vset and vmon are with tolerance'''
     # try:
     #     monitoroutput = subprocess.check_output(MONITOR_CMD, shell=True).decode("utf-8")
@@ -69,7 +73,7 @@ def check_hv(channel: int, tolerance:float = 1) -> bool:
     return(bool(abs(vmon-vset) <= tolerance))
 
 
-def ramp_time(channel:int, tolerance:float = 1) -> float:
+def ramp_time(channel: int, tolerance: float = 1) -> float:
     '''Estimate time needed to ramp to target voltage'''
     hvinfo = monitor()
     vmon = hvinfo[channel]['vmon']
@@ -90,7 +94,7 @@ def ramp_time(channel:int, tolerance:float = 1) -> float:
     return ramptime
 
 
-def ramp_and_check(channel:int, tolerance:float = 1, sleeptime=None, loopcount=15):
+def ramp_and_check(channel: int, tolerance: float = 1, sleeptime=None, loopcount=15):
     '''Ramp voltages and monitor along the way.'''
     loop_count = 0
     ramptime = ramp_time(channel, tolerance) + 1
