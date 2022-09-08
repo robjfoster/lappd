@@ -10,6 +10,7 @@ from lappd.matching import plot_hitmap, strip_positions, x_to_t
 from lappd.utils import lappdcfg as cfg
 from lappd.utils.lognormal import LogNormal
 from lappd.utils.pdf import ChargeSharePDF
+from lappd.utils.pyhist import pyhist
 from lappd.utils.roothist import roothist
 from scipy.stats import exponnorm
 
@@ -212,6 +213,14 @@ try:
     n_samples = int(sys.argv[2])
 except IndexError:
     n_samples = 0
+try:
+    mp = True if sys.argv[3].lower() == "mp" else False
+except IndexError:
+    mp = False
+if mp:
+    print("Running wavesim in multiprocessing mode")
+else:
+    print("Running wavesim in default mode")
 rng = np.random.default_rng(seed=1)
 
 pmt_times = []
@@ -298,85 +307,85 @@ def mp_wavesim(event_no):
                                       for hit in levent.hits]
                 for trig_time in this_trigger_times:
                     trigger_times.append(trig_time)
-                return x_res, y_res, t_res, trigger_times
+    return x_res, y_res, t_res, trigger_times
 
 
-with Pool(4) as pool:
-    success = pool.map(mp_wavesim, range(1000))
-    for i in success[0]:
-        x_res += i
-    for i in success[1]:
-        y_res += i
-    for i in success[2]:
-        t_res += i
-    for i in success[3]:
-        trigger_times += i
-breakpoint()
-
-for event in gen_event(filepath):
-    print(event.evnumber)
-    # if event.evnumber > 1000:
-    #     break
-    if event.pmts:
-        for mcpmt in event.mcpmts:
-            if mcpmt.GetType() == 2:
-                leftmatrix = np.zeros((28, cfg.NSAMPLES-cfg.NREMOVEDSAMPLES))
-                rightmatrix = np.zeros((28, cfg.NSAMPLES-cfg.NREMOVEDSAMPLES))
-                leftmatrix = add_noise(leftmatrix, NOISE_RMS)
-                rightmatrix = add_noise(rightmatrix, NOISE_RMS)
-                photon_count = mcpmt.GetMCPhotonCount()
-                if n_samples:
-                    if n_samples > photon_count:
-                        continue
-                    samples = rng.choice(
-                        photon_count, size=n_samples, replace=False)
-                else:
-                    samples = range(photon_count)
-                print(f"Photon count: {photon_count}")
-                mc_hits = []
-                for mcpid in samples:
-                    mcphoton = mcpmt.GetMCPhoton(int(mcpid))
-                    time = mcphoton.GetFrontEndTime() + TIME_OFFSET
-                    if time > 200:
-                        continue
-                    position = np.asarray(mcphoton.GetPosition())
-                    charge = mcphoton.GetCharge()
-                    # print(f"Creator process: {mcphoton.GetProcess()}")
-                    if mcphoton.GetProcess() == "Cerenkov":
-                        n_ch += 1
-                    elif mcphoton.GetProcess() == "Scintillation":
-                        n_scint += 1
-                    elif mcphoton.GetProcess() == "Reemission":
-                        n_rem += 1
+if mp:
+    with Pool(16) as pool:
+        success = pool.map(mp_wavesim, range(1000))
+        for result in success:
+            x_res += result[0]
+            y_res += result[1]
+            t_res += result[2]
+            trigger_times += result[3]
+else:
+    for event in gen_event(filepath):
+        print(event.evnumber)
+        # if event.evnumber > 1000:
+        #     break
+        if event.pmts:
+            for mcpmt in event.mcpmts:
+                if mcpmt.GetType() == 2:
+                    leftmatrix = np.zeros(
+                        (28, cfg.NSAMPLES-cfg.NREMOVEDSAMPLES))
+                    rightmatrix = np.zeros(
+                        (28, cfg.NSAMPLES-cfg.NREMOVEDSAMPLES))
+                    leftmatrix = add_noise(leftmatrix, NOISE_RMS)
+                    rightmatrix = add_noise(rightmatrix, NOISE_RMS)
+                    photon_count = mcpmt.GetMCPhotonCount()
+                    if n_samples:
+                        if n_samples > photon_count:
+                            continue
+                        samples = rng.choice(
+                            photon_count, size=n_samples, replace=False)
                     else:
-                        breakpoint()
-                    mc_hits.append((position[0], position[1], time))
-                    left, right = gen_arb_wave(position, charge, time)
-                    leftmatrix += left
-                    rightmatrix += right
-                    lappd_times.append(time)
-                levent = LAPPDEvent.build_from_matrix(
-                    leftmatrix, rightmatrix, event_no=event.evnumber)
-                if np.max(levent.leftmatrix) < 4.0 or np.max(levent.rightmatrix) < 4:
-                    continue
-                levent.reconstruct(
-                    plot=False, template=cfg.TEMPLATE)  # + gen_noise(0, NOISE_RMS/4, cfg.TEMPLATE.shape))
-                print(f"Number of hits reconstructed: {len(levent.hits)}")
-                print(levent.hits)
-                n_photons.append(len(samples))
-                n_hits.append(len(levent.hits))
-                effs.append(len(levent.hits) / len(samples))
-                reco_matches = []
-                for recohit in levent.hits:
-                    index = find_nearest_MChit(recohit, mc_hits)
-                    reco_matches.append(index)
-                    x_res.append(recohit.recox - mc_hits[index][0])
-                    y_res.append(recohit.recoy - mc_hits[index][1])
-                    t_res.append(
-                        (recohit.recot) - mc_hits[index][2])
-                trigger_times += [x_to_t(hit.x) - np.random.normal(TIME_OFFSET, 0.27)
-                                  for hit in levent.hits]
+                        samples = range(photon_count)
+                    print(f"Photon count: {photon_count}")
+                    mc_hits = []
+                    for mcpid in samples:
+                        mcphoton = mcpmt.GetMCPhoton(int(mcpid))
+                        time = mcphoton.GetFrontEndTime() + TIME_OFFSET
+                        if time > 200:
+                            continue
+                        position = np.asarray(mcphoton.GetPosition())
+                        charge = mcphoton.GetCharge()
+                        # print(f"Creator process: {mcphoton.GetProcess()}")
+                        if mcphoton.GetProcess() == "Cerenkov":
+                            n_ch += 1
+                        elif mcphoton.GetProcess() == "Scintillation":
+                            n_scint += 1
+                        elif mcphoton.GetProcess() == "Reemission":
+                            n_rem += 1
+                        else:
+                            breakpoint()
+                        mc_hits.append((position[0], position[1], time))
+                        left, right = gen_arb_wave(position, charge, time)
+                        leftmatrix += left
+                        rightmatrix += right
+                        lappd_times.append(time)
+                    levent = LAPPDEvent.build_from_matrix(
+                        leftmatrix, rightmatrix, event_no=event.evnumber)
+                    if np.max(levent.leftmatrix) < 4.0 or np.max(levent.rightmatrix) < 4:
+                        continue
+                    levent.reconstruct(
+                        plot=False, template=cfg.TEMPLATE)  # + gen_noise(0, NOISE_RMS/4, cfg.TEMPLATE.shape))
+                    print(f"Number of hits reconstructed: {len(levent.hits)}")
+                    print(levent.hits)
+                    n_photons.append(len(samples))
+                    n_hits.append(len(levent.hits))
+                    effs.append(len(levent.hits) / len(samples))
+                    reco_matches = []
+                    for recohit in levent.hits:
+                        index = find_nearest_MChit(recohit, mc_hits)
+                        reco_matches.append(index)
+                        x_res.append(recohit.recox - mc_hits[index][0])
+                        y_res.append(recohit.recoy - mc_hits[index][1])
+                        t_res.append(
+                            (recohit.recot) - mc_hits[index][2])
+                    trigger_times += [x_to_t(hit.x) - np.random.normal(TIME_OFFSET, 0.27)
+                                      for hit in levent.hits]
 
+pyhist(trigger_times, fit=False, binwidth=0.2)
 xposhist = root.TH1D("xpos", "xpos", 300, -100, 100)
 yposhist = root.TH1D("ypos", "ypos", 300, -100, 100)
 thist = root.TH1D("t", "t", 6000, -100, 100)
