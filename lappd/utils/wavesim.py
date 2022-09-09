@@ -99,7 +99,7 @@ def gen_event(filepath: str):
     pmtinfo = rt.run.GetPMTInfo()
     n = 0
     while n < t.GetEntries():
-        #print(f"Yielding entry {n} out of {t.GetEntries()}")
+        # print(f"Yielding entry {n} out of {t.GetEntries()}")
         yield Event(t, pmtinfo, n)
         n += 1
 
@@ -119,16 +119,33 @@ def find_nearest_MChit(reco_hit, mchits):
     for i, mchit in enumerate(mchits):
         mcx = mchit[0]
         mcy = mchit[1]
-        #mcz = mchits[2]
+        # mcz = mchits[2]
         mct = mchit[2]
         deltaR = np.sqrt((mcx - reco_hit.recox)**2 + (mcy - reco_hit.recoy)**2 + (
-            (mct * 180) + ((reco_hit.x * (cfg.NS_PER_SAMPLE / cfg.INTERPFACTOR)) * 180)))
+            (mct * 180) - ((reco_hit.x * (cfg.NS_PER_SAMPLE / cfg.INTERPFACTOR)) * 180))**2)
         if deltaR < closest:
             closest = deltaR
             index = i
     if index > 999:
         breakpoint()
     return index
+
+
+def reco_plot(recohits, mchits, matches):
+    plt.scatter([mchit[0] for mchit in mchits], [mchit[1]
+                                                 for mchit in mchits], marker=".", c="b", label="MC")
+    plt.scatter([recohit.recox for recohit in recohits], [
+                recohit.recoy for recohit in recohits], marker="x", c="red", label="Reconstructed")
+    for i, recohit in enumerate(recohits):
+        plt.plot([recohit.recox, mchits[matches[i]][0]], [
+            recohit.recoy, mchits[matches[i]][1]], linestyle="dashed", marker=None, c="purple")
+    plt.xlim(-100, 100)
+    plt.ylim(-100, 100)
+    plt.xlabel("Horizontal position (mm)")
+    plt.ylabel("Vertical position (mm)")
+    plt.title("Difference between MC and reconstructed position")
+    plt.legend()
+    plt.show()
 
 
 def finder(a, b):
@@ -169,7 +186,7 @@ def gen_arb_wave(position, charge, time):
     # Assume the charge share distribution is gaussian. Variable is distance from strip to hit
     # The cloud radius is ~4mm on striplines, assume this is 2sigma value so 2mm is the PDF sigma
     chargepdf = ChargeSharePDF(cfg.CLOUDRADIUS, 0, 200, 1000)
-    #print(f"x: {position[0]}, y: {position[1]}, z: {position[2]}")
+    # print(f"x: {position[0]}, y: {position[1]}, z: {position[2]}")
     charges = []
     for strip in strip_positions:
         distance = abs(strip - position[1])
@@ -348,6 +365,8 @@ else:
                         if time > 200:
                             continue
                         position = np.asarray(mcphoton.GetPosition())
+                        # if position[1] > 92:
+                        #     continue
                         charge = mcphoton.GetCharge()
                         # print(f"Creator process: {mcphoton.GetProcess()}")
                         if mcphoton.GetProcess() == "Cerenkov":
@@ -382,6 +401,10 @@ else:
                         y_res.append(recohit.recoy - mc_hits[index][1])
                         t_res.append(
                             (recohit.recot) - mc_hits[index][2])
+                        # if recohit.recot - mc_hits[index][2] > 5:
+                        #     # Check the function matching reco to MC hits (especially the timing part)
+                        #     breakpoint()
+                    reco_plot(levent.hits, mc_hits, reco_matches)
                     trigger_times += [x_to_t(hit.x) - np.random.normal(TIME_OFFSET, 0.27)
                                       for hit in levent.hits]
 
