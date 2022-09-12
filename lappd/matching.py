@@ -43,6 +43,9 @@ def z_to_ampl(z):
     return z
 
 
+strip_positions = y_to_loc(np.arange(0, 28, 1), interpfactor=1)
+
+
 def transverse_position(lefttime, righttime):
     timedelta = lefttime - righttime
     pos = timedelta / cfg.MAXDELTA * (cfg.STRIPLENGTH / 2.0)
@@ -69,10 +72,12 @@ def get_centroid(matrix: np.ndarray, hit: Hit3D, width: int = 10) -> float:
         lower = -hit.y
     else:
         lower = width
-    slicedmatrix = matrix[hit.y-lower:hit.y+upper, hit.x]
+    slicedmatrix = matrix[hit.y-lower:hit.y+upper+1, hit.x]
     # if we assume the hit profile across strips is gaussian...
-    centroid = np.mean(slicedmatrix)
-    return hit.y - upper + centroid
+    interp_pos = np.arange(hit.y-lower, hit.y+upper+1)
+    centroid = (1 / np.sum(slicedmatrix)) * \
+        np.sum(slicedmatrix*interp_pos)
+    return centroid
 
 
 def get_centroid_combined(
@@ -195,7 +200,7 @@ def match_peaks(leftpeaks: np.ndarray,
     right_unmatched = []
     for i in unmatched[1]:
         right_unmatched.append(rightpeaks[i])
-    #print(f"Matched {len(pairs)} pairs")
+    # print(f"Matched {len(pairs)} pairs")
     left_unmatched = list(set(left_unmatched))
     right_unmatched = list(set(right_unmatched))
     # if len(left_unmatched) == 0 and len(right_unmatched) == 0:
@@ -205,8 +210,6 @@ def match_peaks(leftpeaks: np.ndarray,
     #     print(f"{len(right_unmatched)} right hit unmatched")
     return pairs, (left_unmatched, right_unmatched)
 
-
-strip_positions = y_to_loc(np.arange(0, 28, 1), interpfactor=1)
 
 if __name__ == "__main__":
     import sys
@@ -234,7 +237,7 @@ if __name__ == "__main__":
         breakpoint()
         template = np.load("template2d.npy")
         temp1d = np.load("template.npy")
-        #print(f"Event number: {levent.event_no}")
+        # print(f"Event number: {levent.event_no}")
         eventcount += 1
         left = levent.leftmatrix
         right = levent.rightmatrix
