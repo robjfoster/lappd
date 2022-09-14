@@ -290,8 +290,8 @@ class LAPPDEvent():
             xpos, xposerr = transverse_position(
                 x_to_t(leftcfd, interpfactor=cfg.INTERPFACTOR),
                 x_to_t(rightcfd, interpfactor=cfg.INTERPFACTOR))
-            ypos = y_to_loc((get_centroid(left_interp, pair.left) + get_centroid(
-                right_interp, pair.right)) / 2.0, interpfactor=cfg.INTERPFACTOR)
+            ypos = y_to_loc((get_centroid(left_interp, pair.left, width=20) + get_centroid(
+                right_interp, pair.right, width=20)) / 2.0, interpfactor=cfg.INTERPFACTOR)
             time = x_to_t((leftcfd + rightcfd) / 2.0)
             recohit = RecoHit(xpos,
                               ypos,
