@@ -19,7 +19,7 @@ strip_positions = strip_positions
 nsamples = cfg.NSAMPLES - cfg.NREMOVEDSAMPLES
 xs = np.arange(1, nsamples+1) * cfg.NS_PER_SAMPLE
 medianx = np.max(xs)
-NOISE_RMS = 0.63  # calculated from rms of 10,000 empty pulses in dark rate data
+NOISE_RMS = 0.05  # calculated from rms of 10,000 empty pulses in dark rate data
 TIME_OFFSET = 10.0  # ns, arbitrary offset for when first photon is registered
 
 # chargex = np.arange(0, 2.0, 0.05)
@@ -136,12 +136,26 @@ def reco_plot(recohits, mchits, matches):
                                                  for mchit in mchits], marker=".", c="b", label="MC")
     plt.scatter([recohit.recox for recohit in recohits], [
                 recohit.recoy for recohit in recohits], marker="x", c="red", label="Reconstructed")
-    for i, recohit in enumerate(recohits):
-        plt.plot([recohit.recox, mchits[matches[i]][0]], [
-            recohit.recoy, mchits[matches[i]][1]], linestyle="dashed", marker=None, c="purple")
+    # for i, recohit in enumerate(recohits):
+    # plt.plot([recohit.recox, mchits[matches[i]][0]], [
+    #     recohit.recoy, mchits[matches[i]][1]], linestyle="dashed", marker=None, c="purple")
     plt.xlim(-100, 100)
     plt.ylim(-100, 100)
     plt.xlabel("Horizontal position (mm)")
+    plt.ylabel("Vertical position (mm)")
+    plt.title("Difference between MC and reconstructed position")
+    plt.legend()
+    plt.show()
+    plt.scatter([mchit[2] for mchit in mchits], [mchit[1]
+                                                 for mchit in mchits], marker=".", c="b", label="MC")
+    plt.scatter([recohit.recot for recohit in recohits], [
+                recohit.recoy for recohit in recohits], marker="x", c="red", label="Reconstructed")
+    # for i, recohit in enumerate(recohits):
+    # plt.plot([recohit.recot, mchits[matches[i]][2]], [
+    #     recohit.recoy, mchits[matches[i]][1]], linestyle="dashed", marker=None, c="purple")
+    plt.xlim(0, 200)
+    plt.ylim(-100, 100)
+    plt.xlabel("Time (ns)")
     plt.ylabel("Vertical position (mm)")
     plt.title("Difference between MC and reconstructed position")
     plt.legend()
@@ -292,11 +306,14 @@ def mp_wavesim(event_no):
                 for mcpid in samples:
                     mcphoton = mcpmt.GetMCPhoton(int(mcpid))
                     time = mcphoton.GetFrontEndTime() + TIME_OFFSET
+                    mctime = mcphoton.GetHitTime() + TIME_OFFSET
                     if time > 200:
                         continue
                     position = np.asarray(mcphoton.GetPosition())
+                    # if position[1] > 92 or position[1] < -92:
+                    #     continue
                     charge = mcphoton.GetCharge()
-                    mc_hits.append((position[0], position[1], time))
+                    mc_hits.append((position[0], position[1], mctime))
                     left, right = gen_arb_wave(position, charge, time)
                     leftmatrix += left
                     rightmatrix += right
@@ -324,7 +341,7 @@ def mp_wavesim(event_no):
                                       for hit in levent.hits]
                 for trig_time in this_trigger_times:
                     trigger_times.append(trig_time)
-    return x_res, y_res, t_res, trigger_times
+    return x_res, y_res, t_res, trigger_times, effs
 
 
 if mp:
@@ -335,6 +352,7 @@ if mp:
             y_res += result[1]
             t_res += result[2]
             trigger_times += result[3]
+            effs += result[4]
 else:
     for event in gen_event(filepath):
         print(event.evnumber)
@@ -362,11 +380,10 @@ else:
                     for mcpid in samples:
                         mcphoton = mcpmt.GetMCPhoton(int(mcpid))
                         time = mcphoton.GetFrontEndTime() + TIME_OFFSET
+                        mctime = mcphoton.GetHitTime() + TIME_OFFSET
                         if time > 200:
                             continue
                         position = np.asarray(mcphoton.GetPosition())
-                        # if position[1] > 92:
-                        #     continue
                         charge = mcphoton.GetCharge()
                         # print(f"Creator process: {mcphoton.GetProcess()}")
                         if mcphoton.GetProcess() == "Cerenkov":
@@ -377,7 +394,7 @@ else:
                             n_rem += 1
                         else:
                             breakpoint()
-                        mc_hits.append((position[0], position[1], time))
+                        mc_hits.append((position[0], position[1], mctime))
                         left, right = gen_arb_wave(position, charge, time)
                         leftmatrix += left
                         rightmatrix += right
@@ -389,7 +406,7 @@ else:
                     levent.reconstruct(
                         plot=False, template=cfg.TEMPLATE)  # + gen_noise(0, NOISE_RMS/4, cfg.TEMPLATE.shape))
                     print(f"Number of hits reconstructed: {len(levent.hits)}")
-                    print(levent.hits)
+                    # print(levent.hits)
                     n_photons.append(len(samples))
                     n_hits.append(len(levent.hits))
                     effs.append(len(levent.hits) / len(samples))
@@ -399,18 +416,20 @@ else:
                         reco_matches.append(index)
                         x_res.append(recohit.recox - mc_hits[index][0])
                         y_res.append(recohit.recoy - mc_hits[index][1])
+                        if recohit.recoy - mc_hits[index][1] < -5:
+                            print(mc_hits[index][1])
                         t_res.append(
                             (recohit.recot) - mc_hits[index][2])
                         # if recohit.recot - mc_hits[index][2] > 5:
                         #     # Check the function matching reco to MC hits (especially the timing part)
                         #     breakpoint()
-                    reco_plot(levent.hits, mc_hits, reco_matches)
+                    #reco_plot(levent.hits, mc_hits, reco_matches)
                     trigger_times += [x_to_t(hit.x) - np.random.normal(TIME_OFFSET, 0.27)
                                       for hit in levent.hits]
 
-pyhist(trigger_times, fit=False, binwidth=0.2)
-xposhist = root.TH1D("xpos", "xpos", 300, -100, 100)
-yposhist = root.TH1D("ypos", "ypos", 300, -100, 100)
+# pyhist(trigger_times, fit=False, binwidth=0.2)
+xposhist = root.TH1D("xpos", "xpos", 600, -100, 100)
+yposhist = root.TH1D("ypos", "ypos", 600, -100, 100)
 thist = root.TH1D("t", "t", 6000, -100, 100)
 for xval, yval, tval in zip(x_res, y_res, t_res):
     xposhist.Fill(xval)
@@ -423,8 +442,13 @@ times = root.TH1D("times", "times", 300, -10, 50)
 for value in trigger_times:
     times.Fill(value)
 times.Draw()
-breakpoint()
-print("EFFS: ", effs)
+print("Efficiency: ", np.mean(effs))
+pyhist(x_res, binwidth=1.0, xlims=(-100, 100), title="X resolution",
+       xlabel="reco X - MC X (mm)", ylabel="Counts / 0.4 mm")
+pyhist(y_res, binwidth=0.1, xlims=(-100, 100), title="Y resolution",
+       xlabel="reco Y - MC Y (mm)", ylabel="Counts / 0.1 mm")
+pyhist(t_res, binwidth=0.01, xlims=(-10, 10), title="t resolution",
+       xlabel="reco t - MC t (ns)", ylabel="Counts / 0.01 ns")
 breakpoint()
 pmtth1d = root.TH1D("test", "test", 40, -10, 10)
 for value in pmt_times:

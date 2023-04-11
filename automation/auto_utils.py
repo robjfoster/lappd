@@ -2,38 +2,76 @@ import sys
 import subprocess
 
 
-def hvparse(output: str):
-    '''Parsing information from CAEN HV module.'''
-    output = output.decode("utf-8").split("\n")
-    error_msg = output[0]
-    header = output[1].split(",")
+# def hvparse(output: str):
+#     '''Parsing information from CAEN HV module.'''
+#     output = output.decode("utf-8").split("\n")
+#     error_msg = output[0]
+#     header = output[1].split(",")
+#     hvinfo = {}
+#     for row in output[2:-1]:
+#         row = row.split(",")
+#         channel = int(row[1])
+#         values = {}
+#         values["model"] = row[0]
+#         values["iset"] = float(row[2].split("uA")[0])
+#         values['vset'] = float(row[3].split("V")[0])
+#         values['vmon'] = float(row[4].split("V")[0])
+#         values['vmax'] = float(row[5].split("V")[0])
+#         values["imon"] = float(row[6].split("uA")[0])
+#         values["rup"] = float(row[7].split("Vps")[0])
+#         values["rdown"] = float(row[8].split("Vps")[0])
+#         values["power"] = row[9]
+#         values["err"] = row[10]
+#         hvinfo[channel] = values
+#     return hvinfo
+
+
+# def monitor(cmd='/home/watchman/Documents/LAPPDCrate/sethv/sethv --monitor'):
+#     '''Getting monitoring infomation from HV.'''
+#     # TODO: Rampup/Rampdown is considered an error message
+#     try:
+#         output = subprocess.check_output(cmd, shell=True)
+#         hvinfo = hvparse(output)
+#     except subprocess.CalledProcessError as e:
+#         print(f"Error message: {e.output}")
+#         sys.exit("Monitoring error")
+#     return hvinfo
+
+def hvparse(output):
+
     hvinfo = {}
-    for row in output[2:-1]:
-        row = row.split(",")
-        channel = int(row[1])
-        values = {}
-        values["model"] = row[0]
-        values["iset"] = float(row[2].split("uA")[0])
-        values['vset'] = float(row[3].split("V")[0])
-        values['vmon'] = float(row[4].split("V")[0])
-        values['vmax'] = float(row[5].split("V")[0])
-        values["imon"] = float(row[6].split("uA")[0])
-        values["rup"] = float(row[7].split("Vps")[0])
-        values["rdown"] = float(row[8].split("Vps")[0])
-        values["power"] = row[9]
-        values["err"] = row[10]
-        hvinfo[channel] = values
+
+    for i, row in enumerate(output.stdout):
+        if i == 0:
+            error_msg = row.decode("utf-8")
+        elif i == 1:
+            header = row.decode('utf-8').split(',')
+        elif i > 1:
+            row = row.decode('utf-8')
+            row = row.split(",")
+            values = {}
+            values['model'] = row[0]
+            values["iset"] = float(row[2].split("uA")[0])
+            values['vset'] = float(row[3].split("V")[0])
+            values['vmon'] = float(row[4].split("V")[0])
+            values['vmax'] = float(row[5].split("V")[0])
+            values["imon"] = float(row[6].split("uA")[0])
+            values["rup"] = float(row[7].split("Vps")[0])
+            values["rdown"] = float(row[8].split("Vps")[0])
+            values["power"] = row[9]
+            values["err"] = row[10]
+            hvinfo[i-2] = values
     return hvinfo
 
 
-def monitor(cmd='/home/watchman/Documents/LAPPDCrate/sethv/sethv --monitor'):
+def monitor(cmd='/home/watchman/Documents/LAPPDCrate/sethv/sethv', opt='--monitor'):
     '''Getting monitoring infomation from HV.'''
     # TODO: Rampup/Rampdown is considered an error message
     try:
-        output = subprocess.check_output(cmd, shell=True)
+        output = subprocess.Popen(
+            [cmd, opt], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         hvinfo = hvparse(output)
     except subprocess.CalledProcessError as e:
-        print(f"Error message: {e.output}")
         sys.exit("Monitoring error")
     return hvinfo
 
@@ -53,7 +91,7 @@ def cmd_sethv(channel, voltage):
     subprocess.call(reset_cmd, shell=True)
 
 
-def check_hv(channel: int, tolerance: float = 1) -> bool:
+def check_hv(channel: int, tolerance: float = 2) -> bool:
     '''Check vset and vmon are with tolerance'''
     # try:
     #     monitoroutput = subprocess.check_output(MONITOR_CMD, shell=True).decode("utf-8")
@@ -73,7 +111,7 @@ def check_hv(channel: int, tolerance: float = 1) -> bool:
     return(bool(abs(vmon-vset) <= tolerance))
 
 
-def ramp_time(channel: int, tolerance: float = 1) -> float:
+def ramp_time(channel: int, tolerance: float = 2) -> float:
     '''Estimate time needed to ramp to target voltage'''
     hvinfo = monitor()
     vmon = hvinfo[channel]['vmon']
@@ -94,7 +132,7 @@ def ramp_time(channel: int, tolerance: float = 1) -> float:
     return ramptime
 
 
-def ramp_and_check(channel: int, tolerance: float = 1, sleeptime=None, loopcount=15):
+def ramp_and_check(channel: int, tolerance: float = 2, sleeptime=None, loopcount=15):
     '''Ramp voltages and monitor along the way.'''
     loop_count = 0
     ramptime = ramp_time(channel, tolerance) + 1
@@ -102,7 +140,7 @@ def ramp_and_check(channel: int, tolerance: float = 1, sleeptime=None, loopcount
 
     while True:
         if check_hv(channel):
-            print("Voltage reached")
+            print("Channel "+str(channel)+": Voltage reached")
             break
         print("Ramping voltage...")
         loop_count += 1

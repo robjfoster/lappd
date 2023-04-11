@@ -31,76 +31,110 @@ def pc_to_gain(pc):
 pulse_charges = []
 other_charges = []
 charges = []
-sample_start = int(75 / cfg.NS_PER_SAMPLE)
+heights = []
+id_pulse_heights = []
+
+
+sample_start = int(80 / cfg.NS_PER_SAMPLE)
 sample_end = int(100 / cfg.NS_PER_SAMPLE)
-int_start = int(54 / cfg.NSAMPLES)
-int_end = int(60 / cfg.NSAMPLES)
+# int_start = int(54 / cfg.NSAMPLES)
+# int_end = int(60 / cfg.NSAMPLES)
 
-
-# for sevent in StripEvent.itr_file(stripnumber, base_dir):
-#     if sevent.pulses:
-#         for pulse in sevent.pulses:
-#             charge = -1 * np.trapz(pulse.left.wave, dx=NS_PER_SAMPLE)
-#             pulse_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
-#     else:
-#         charge = -1 * np.trapz(sevent.leftwaveform[int_start:int_end])
-#         other_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
-
-# for levent in LAPPDEvent.itr_all(base_dir):
-#     sevent = levent.stripevents[stripnumber]
-#     if sevent.pulses:
-#         for pulse in sevent.pulses:
-#             charge = -1 * np.trapz(pulse.left.wave, dx=cfg.NS_PER_SAMPLE)
-#             pulse_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
-#     else:
-#         charge = -1 * np.trapz(sevent.leftwaveform[int_start:int_end])
-#         other_charges.append(charge / 1e3 * 1e-9 / 50 / 1e-12)
-
-# for levent in LAPPDEvent.itr_all_raw(base_dir):
-#     sevent = levent.stripevents[stripnumber]
-#     totalcharge = 0
-#     totalcharge += -1 * \
-#         np.trapz(
-#             sevent.leftwaveform[sample_start:sample_end], dx=cfg.NS_PER_SAMPLE)
-#     totalcharge += -1 * \
-#         np.trapz(
-#             sevent.rightwaveform[sample_start:sample_end], dx=cfg.NS_PER_SAMPLE)
-#     pulse_charges.append(totalcharge / 1e3 * 1e-9 / 50 / 1e-12)
+debug = False
 
 
 total_pulses = 0
 total_skipped = 0
 times = []
 for sevent in StripEvent.itr_file_raw(stripnumber, base_dir):
-    if su.threshold(sevent.leftwaveform, 3, polarity="positive") or su.threshold(sevent.rightwaveform, 3, polarity="positive"):
-        total_skipped += 1
-        continue
-    if su.threshold(sevent.leftwaveform, -4) and su.threshold(sevent.rightwaveform, -4):
-        total_pulses += 1
-        # sevent.plot_raw()
-        times.append(np.argmin(sevent.leftwaveform) * cfg.NS_PER_SAMPLE)
+    lwave = sevent.leftwaveform
+    rwave = sevent.rightwaveform
+    # if (np.max(lwave) > 10) or (np.max(rwave) > 10):
+    #     print("skipping:", sevent.event_no)
+    #     continue
+    # plt.plot(lwave)
+    # plt.plot(rwave)
+    # plt.show()
+    lwindow = lwave[sample_start:sample_end]
+    rwindow = rwave[sample_start:sample_end]
+    lpeak_time = (np.argmax(lwave < -8))
+    rpeak_time = np.argmax(rwave < -8)
+    peak_time = (lpeak_time+rpeak_time) / 2 * 0.2
+    if peak_time > 1:
+        if lpeak_time < 1:
+            peak_time = rpeak_time
+        if rpeak_time < 1:
+            peak_time = lpeak_time
+        times.append(peak_time)
+    inwindowpeak = int((np.argmin(lwindow) + np.argmin(rwindow))/2)
+    start_int = inwindowpeak - 10 if inwindowpeak > 10 else 0
+    end_int = inwindowpeak + \
+        20 if (inwindowpeak + 20) < (sample_end -
+                                     sample_start) else (sample_end-sample_start) if start_int != 0 else 30
+    if end_int == (sample_end-sample_start):
+        start_int = end_int - 30
     totalcharge = 0
-    totalcharge += np.trapz(
-        sevent.leftwaveform[sample_start:sample_end], dx=cfg.NS_PER_SAMPLE)
-    totalcharge += np.trapz(
-        sevent.rightwaveform[sample_start:sample_end], dx=cfg.NS_PER_SAMPLE)
-    totalcharge = -1 * totalcharge / 1e3 * 1e-9 / 50 / 1e-12
-    # if totalcharge < -0.3:
-    #     plt.plot(sevent.leftwaveform[sample_start:sample_end])
-    #     plt.show()
-    #     plt.plot(sevent.rightwaveform[sample_start:sample_end])
-    #     plt.show()
-    pulse_charges.append(totalcharge)
+    leftcharge = np.trapz(
+        lwindow[start_int:end_int], dx=cfg.NS_PER_SAMPLE) * -1
+    rightcharge = np.trapz(
+        rwindow[start_int: end_int], dx=cfg.NS_PER_SAMPLE) * -1
+    totalcharge = leftcharge + rightcharge
+    lheight = -1*np.min(lwindow)
+    rheight = -1*np.min(rwindow)
+    # if abs(lheight - rheight) > 3:
+    #     print("Height mismatch: ", sevent.event_no)
+    #     continue
+    height = (lheight+rheight) / 2
+    heights.append(height)
+    picocoulombs = totalcharge/1e3*1e-9/50/1.6e-19
+    pulse_charges.append(picocoulombs)
+    if debug:
+        print("Height: ", height)
+        print(f"Gain: {picocoulombs:2E}")
+        print("start int: ", start_int)
+        print("end int: ", end_int)
+        plt.plot(lwave)
+        plt.plot(rwave)
+        plt.axvline(lpeak_time, c='blue', linestyle='dashed')
+        plt.axvline(rpeak_time, c='orange', linestyle='dashed')
+        plt.axvline(sample_start+start_int, c='purple')
+        plt.axvline(sample_start+end_int, c='purple')
+        plt.show()
+    if np.min(lwindow) < -8 or np.min(rwindow) < -8:
+        total_pulses += 1
+
+
+print(f"Number of waveforms above threshold: {total_pulses}")
+time_values = np.asarray(times)
+th1 = root.TH1F("hist", "hist", 400, 0, 200)
+for value in time_values:
+    th1.Fill(value)
+th1.SetTitle("Timing;ns;Count")
+th1.Draw()
+print("Press c to continue")
+breakpoint()
+del th1
+
+heights = np.asarray(heights)
+th1 = root.TH1F("hist", "hist", 300, 0, 50)
+for value in heights:
+    th1.Fill(value)
+th1.SetTitle("Height;mV;Count")
+th1.Draw()
+breakpoint()
+del th1
 
 pulse_charges = np.asarray(pulse_charges)
-th1 = root.TH1F("hist", "hist", 250, -0.5, 1.5)
+th1 = root.TH1F("hist", "hist", 250, -5e6, 2e7)
 for value in pulse_charges:
     th1.Fill(value)
-th1.SetTitle("Gain;pC;Count")
-# tf1 = double_gauss()
-# tf1.SetParameters(1000, -0.2, 0.25, 1000, 0.5, 0.15)
-# th1.Fit("doublegauss")
+th1.SetTitle("Gain;Gain;Count")
 print(f"################ Total pulses: {total_pulses} ####################")
 print(f"Total skipped: {total_skipped}")
 th1.Draw()
 breakpoint()
+savefilename = input("enter file name")
+np.save(f"./data/gain/{savefilename}_gain.npy", pulse_charges)
+np.save(f"./data/gain/{savefilename}_heights.npy", heights)
+print(np.mean(heights[heights > 4]))
+print(len(heights[heights > 4]))

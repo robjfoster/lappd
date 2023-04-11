@@ -8,7 +8,7 @@ def rootgaus(x, constant, mean, sigma):
     return constant * np.exp(-0.5 * ((x - mean) / sigma)**2)
 
 
-def pyhist(data, fit=False, binwidth=1, xlims=None):
+def pyhist(data, fit=False, binwidth=1, xlims=None, title="", xlabel="", ylabel=""):
     mindata = min(data)
     maxdata = max(data)
     bins = np.arange(mindata, maxdata + binwidth, binwidth)
@@ -29,4 +29,7 @@ def pyhist(data, fit=False, binwidth=1, xlims=None):
         del hist
     if xlims:
         plt.xlim(*xlims)
+    plt.xlabel(xlabel, loc="right")
+    plt.ylabel(ylabel, loc="top")
+    plt.title(title)
     plt.show()

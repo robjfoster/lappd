@@ -29,7 +29,6 @@ for file in files:
     print(f"Reading {file}")
     n_waves = caenreader.getNumberEntries(file)
     print(f"Number of waves: {n_waves}")
-    breakpoint()
     total_time = sample_times[-1] * n_waves * 1e-9
     rt_waves = []
     start = time.time()
@@ -40,13 +39,15 @@ for file in files:
     for wave in coarse_output.waves:
         peaks = caenreader.findPeaks(wave.wave, -4, 5, 2)
         if len(peaks) > 1:
-            pdb.set_trace()
+            # pdb.set_trace()
+            pass
         try:
-            if su.rise_time(np.asarray(wave.wave), RISETHRESHOLD, fraction1=0.5, fraction2=1.0):
-                breakpoint()
+            if su.rise_time(np.asarray(wave.wave), RISETHRESHOLD, fraction1=0.5, fraction2=1.3):
                 rt_waves.append(wave)
+                # plt.plot(wave.wave)
+                # plt.show()
         except IndexError:
-            pdb.set_trace()
+            # pdb.set_trace()
             pass
     dark_rate = len(rt_waves) / total_time
     dark_rate_noise_rej = len(
@@ -55,9 +56,11 @@ for file in files:
     print(f"Dark rate = {dark_rate} Hz = {dark_rate / 13.5} Hz/cm2")
     print(
         f"Dark rate (noise rejected) = {dark_rate_noise_rej} Hz = {dark_rate_noise_rej / 13.5} Hz/cm2")
-    # for caenwave in rt_waves:
-    #    np.save("data/examplewaves/" + str(caenwave.eventNo) + ".npy", caenwave.wave)
-    # pdb.set_trace()
-    # with open("results_250.txt", "a") as f:
-    #    f.write(str(dark_rate_noise_rej / 13.5))
-    #    f.write("\n")
+    os.makedirs(f"data/darkwaves_{file.split('/')[-1].split('.')[0]}")
+    for caenwave in rt_waves:
+        np.save(f"data/darkwaves_{file.split('/')[-1].split('.')[0]}/" +
+                str(caenwave.eventNo) + ".npy", caenwave.wave)
+    with open(f"dark_results.txt", "a") as f:
+        f.write(
+            f'{str(dark_rate_noise_rej / 13.5)}, {len(rt_waves)}, {coarse_output.rejectedMax}, {n_waves}, {total_time}')
+        f.write("\n")
