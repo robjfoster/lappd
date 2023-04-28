@@ -188,6 +188,49 @@ namespace CAENReader
             eventNo};
     }
 
+    CAENWave readCAENWaveOpt(std::ifstream &infile)
+    {
+        // New optimised binary read
+        // Doesn't actually seem to be any faster,
+        // but it is in theory now safer with error checking
+        auto count = infile.tellg();
+        std::vector<unsigned int> header;
+        std::vector<float> wave;
+        // We know how big the header and waveform data is, so lets reserve the memory
+        header.reserve(6);
+        wave.reserve(1024);
+        unsigned int hBuffer = 0;
+        float wBuffer = 0;
+        for (int i = 0; i < 6 + 1024; i++)
+        {
+            if (i < 6)
+            {
+                // First read the header
+                if (!infile.read(reinterpret_cast<char *>(&hBuffer), sizeof(unsigned int)))
+                {
+                    throw std::runtime_error("Error in reading header");
+                }
+                header.emplace_back(hBuffer);
+            }
+            else
+            {
+                // Now read the waveform
+                if (!infile.read(reinterpret_cast<char *>(&wBuffer), sizeof(float)))
+                {
+                    throw std::runtime_error("Error in reading waveform");
+                }
+                wave.emplace_back(wBuffer);
+            }
+        }
+        int eventNo = count / (sizeof(float) * 1030);
+        std::vector<float> times = generateTimes(1024, NS_PER_SAMPLE);
+        return CAENWave{
+            processHeader(header),
+            wave,
+            times,
+            eventNo};
+    }
+
     CAENWave readCAENWave(std::string filename, int eventNo)
     {
         int bytestart = eventNo * sizeof(float) * 1030;
