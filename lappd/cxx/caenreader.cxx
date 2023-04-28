@@ -263,6 +263,58 @@ namespace CAENReader
                        { return value - baseline; });
     }
 
+    void subtractBaselineLCMS(std::vector<float> &wave)
+    {
+        // First we calculate the mean and subtract it from the wave
+        auto mean = std::accumulate(wave.begin(), wave.end(), 0.0) / wave.size();
+        std::transform(wave.begin(), wave.end(), wave.begin(), [mean](float &sample) -> float
+                       { return sample - mean; });
+        // Next we fill a TH1F with the waveform data and fit it with a linear function
+        // We then subtract this linear function from the waveform
+        TH1F *h = new TH1F("h", "h", wave.size(), 0, wave.size());
+        for (int i = 0; i < wave.size(); i++)
+        {
+            h->SetBinContent(i, wave[i]);
+        }
+        h->Fit("pol1", "Q");
+        TF1 *f = h->GetFunction("pol1");
+        for (int i = 0; i < wave.size(); i++)
+        {
+            wave[i] = wave[i] - f->Eval(i);
+        }
+        // Next we create a new vector containing all samples less than 1 sigma from the mean
+        // We then calculate the mean of this new vector and subtract it from the waveform
+        std::vector<float> slicedWave;
+        for (int i = 0; i < wave.size(); i++)
+        {
+            if (wave[i] < mean + 1 && wave[i] > mean - 1)
+            {
+                slicedWave.push_back(wave[i]);
+            }
+        }
+        auto slicedMean = std::accumulate(slicedWave.begin(), slicedWave.end(), 0.0) / slicedWave.size();
+        std::transform(wave.begin(), wave.end(), wave.begin(), [slicedMean](float &value) -> float
+                       { return value - slicedMean; });
+        // Now we fill a TH1F with the waveform data and fit it with a linear function
+        // We then subtract this linear function from the waveform
+        TH1F *h2 = new TH1F("h2", "h2", wave.size(), 0, wave.size());
+        for (int i = 0; i < wave.size(); i++)
+        {
+            h2->SetBinContent(i, wave[i]);
+        }
+        h2->Fit("pol1", "Q");
+        TF1 *f2 = h2->GetFunction("pol1");
+        for (int i = 0; i < wave.size(); i++)
+        {
+            wave[i] = wave[i] - f2->Eval(i);
+        }
+        delete f;
+        delete f2;
+        delete h;
+        delete h2;
+        // Now our waveform should be baseline subtracted
+    }
+
     inline void convertADCWave(std::vector<float> &ADCWave, int bitR)
     {
         std::transform(ADCWave.begin(), ADCWave.end(), ADCWave.begin(), [](float &value) -> float
