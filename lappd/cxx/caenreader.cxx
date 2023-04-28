@@ -11,6 +11,8 @@
 
 #include "TROOT.h"
 #include "ROOT/RVec.hxx"
+#include "TF1.h"
+#include "TH1F.h"
 
 // I don't know how to write c++, so
 // this code is probably horrendous.
